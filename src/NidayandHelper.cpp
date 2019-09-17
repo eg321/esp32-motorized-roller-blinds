@@ -8,28 +8,31 @@ NidayandHelper::NidayandHelper(){
 }
 
 boolean NidayandHelper::loadconfig(){
+  // Serial.println("Before open config");
+  // if (SPIFFS.remove(this->_configfile)) {
+  //   Serial.println("Config deleted");
+  // }
   File configFile = SPIFFS.open(this->_configfile, "r");
   if (!configFile) {
     Serial.println("Failed to open config file");
     return false;
   }
 
+  Serial.println("Config opened");
   size_t size = configFile.size();
   if (size > 1024) {
     Serial.println("Config file size is too large");
     return false;
   }
 
-  // Allocate a buffer to store contents of the file.
-  std::unique_ptr<char[]> buf(new char[size]);
+  String configData;
+  while (configFile.available()){
+            configData += char(configFile.read());
+          }
 
-  // We don't use String here because ArduinoJson library requires the input
-  // buffer to be mutable. If you don't use ArduinoJson, you may as well
-  // use configFile.readString instead.
-  configFile.readBytes(buf.get(), size);
-
-  StaticJsonBuffer<200> jsonBuffer;
-  this->_config = jsonBuffer.parseObject(buf.get());
+  const size_t capacity = JSON_OBJECT_SIZE(12) + 230;
+  DynamicJsonBuffer jsonBuffer(capacity);
+  this->_config = jsonBuffer.parseObject(configData);
 
   if (!this->_config.success()) {
     Serial.println("Failed to parse config file");
@@ -120,6 +123,9 @@ void NidayandHelper::mqtt_publish(PubSubClient& psclient, String topic, String p
 }
 
 void NidayandHelper::resetsettings(WiFiManager& wifim){
-  SPIFFS.format();
   wifim.resetSettings();
+  delay(500);
+  SPIFFS.format();
+  Serial.println("Settings cleared");
+  ESP.reset();
 }
