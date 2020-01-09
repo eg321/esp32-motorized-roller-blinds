@@ -1,10 +1,4 @@
-**This repo has been archived as a complete redesign is on its way - including physical components**
-
-# motor-on-roller-blind-ws
-WebSocket based version of [motor-on-roller-blind](https://github.com/nidayand/motor-on-roller-blind). I.e. there is no need of an MQTT server but MQTT is supported as well - you can control it with WebSockets and/or with MQTT messages.
-
-3d parts for printing are available id `3d_parts` folder.
-PCB sources are available in `pcb` folder.
+3d parts for printing are available id `3d_parts` folder. Available from Thingiverse also: https://www.thingiverse.com/thing:4093205/
 
 # Fork changes
 - project ported to Platformio
@@ -12,7 +6,7 @@ PCB sources are available in `pcb` folder.
 - added functionality of 3 step motors
 - add current state broadcasting during blinds moving
 - add wipe setting function
-- add pcb sources
+- 2-3 pins for steppers are not reversed now. Please check that initilization of steppers is ok for you (near 86 line: Stepper1(D1, D2, D3, D4))
 
 # Features
  1. A tiny webserver is setup on the esp8266 that will serve one page to the client
