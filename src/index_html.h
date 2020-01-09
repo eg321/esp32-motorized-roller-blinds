@@ -351,9 +351,9 @@ String INDEX_HTML = R"(<!DOCTYPE html>
     <div class='content'>
     <p>
       <ul>
-        <li>3d print files and instructions: <a href='https://www.thingiverse.com/thing:2392856' target='_blank'>https://www.thingiverse.com/thing:2392856</a></li>
+        <li>3d print files and instructions: <a href='https://www.thingiverse.com/thing:4093205' target='_blank'>https://www.thingiverse.com/thing:4093205</a></li>
         <li>Forked from: <a href='https://github.com/nidayand/motor-on-roller-blind-ws' target='_blank'>https://github.com/nidayand/motor-on-roller-blind-ws</a></li>
-        <li>Current fork on Github: <a href='https://github.com/jnt2007/motor-on-roller-blind-ws' target='_blank'>https://github.com/jnt2007/motor-on-roller-blind-ws</a></li>
+        <li>Current fork on Github: <a href='https://github.com/eg321/motor-on-roller-blind-ws' target='_blank'>https://github.com/eg321/motor-on-roller-blind-ws</a></li>
         <li>Licensed under <a href='https://raw.githubusercontent.com/nidayand/motor-on-roller-blind-ws/master/LICENSE' target='_blank'>MIT License</a></li>
       </ul>
     </p>

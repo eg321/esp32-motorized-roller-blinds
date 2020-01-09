@@ -1,4 +1,4 @@
-#include <Stepper.h>
+#include <Stepper_28BYJ_48.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <PubSubClient.h>
@@ -22,7 +22,7 @@ String APpw = "nidayand";           //Hardcoded password for access point
 //----------------------------------------------------
 
 // Version number for checking if there are new code releases and notifying the user
-String version = "1.3.3";
+String version = "1.3.3-egor";
 
 NidayandHelper helper = NidayandHelper();
 
@@ -83,10 +83,9 @@ bool shouldSaveConfig = false;      //Used for WIFI Manager callback to save par
 boolean initLoop = true;            //To enable actions first time the loop is run
 boolean ccw = true;                 //Turns counter clockwise to lower the curtain
 
-// Stepper_28BYJ_48 Stepper1(D1, D3, D2, D4); //Initiate stepper driver
-Stepper Stepper1(2048, D1, D2);
-Stepper Stepper2(2048, D3, D4);
-Stepper Stepper3(2048, D5, D6);
+Stepper_28BYJ_48 Stepper1(D1, D2, D3, D4); //Initiate stepper driver
+Stepper_28BYJ_48 Stepper2(D5, D6, D7, D8);
+Stepper_28BYJ_48 Stepper3(D9, D9, D9, D9); // not used by me now
 
 ESP8266WebServer server(80);              // TCP server at port 80 will respond to HTTP requests
 WebSocketsServer webSocket = WebSocketsServer(81);  // WebSockets will respond on port 81
@@ -404,12 +403,6 @@ void handleNotFound(){
 
 void setup(void)
 {
-  Stepper1.setSpeed(50);
-  Stepper2.setSpeed(50);
-  Stepper3.setSpeed(50);
-
-  pinMode(D8, OUTPUT);
-
   Serial.begin(115200);
   delay(100);
   Serial.print("Starting now\n");
@@ -578,6 +571,24 @@ void setup(void)
   ESP.wdtDisable();
 }
 
+/**
+  Turn of power to coils whenever the blind
+  is not moving
+*/
+void stopPowerToCoils() {
+  digitalWrite(D1, LOW);
+  digitalWrite(D2, LOW);
+  digitalWrite(D3, LOW);
+  digitalWrite(D4, LOW);
+
+  digitalWrite(D5, LOW);
+  digitalWrite(D6, LOW);
+  digitalWrite(D7, LOW);
+  digitalWrite(D8, LOW);
+
+  digitalWrite(D9, LOW);
+}
+
 void loop(void)
 {
   //OTA client code
@@ -605,6 +616,8 @@ void loop(void)
   if (saveItNow) {
     saveConfig();
     saveItNow = false;
+
+    stopPowerToCoils();
   }
 
   /**
@@ -708,8 +721,17 @@ void loop(void)
       lastPublish = now;
       sendmsg(outputTopic);
     }
-    digitalWrite(D8, HIGH);
-  } else {
-    digitalWrite(D8, LOW);
+  }
+
+  /*
+     After running setup() the motor might still have
+     power on some of the coils. This is making sure that
+     power is off the first time loop() has been executed
+     to avoid heating the stepper motor draining
+     unnecessary current
+  */
+  if (initLoop) {
+    initLoop = false;
+    stopPowerToCoils();
   }
 }
