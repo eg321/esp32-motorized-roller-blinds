@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef NidayandHelper_h
 #define NidayandHelper_h
 
@@ -5,9 +7,33 @@
 #include <ArduinoJson.h>
 #include "FS.h"
 #include <PubSubClient.h>
-#include <WiFiClient.h>
-#include <WiFiManager.h>
 #include <list>
+
+#ifdef ESP32
+  #include "SPIFFS.h"
+  #include <esp_wifi.h>
+  #include <WiFi.h>
+  #include <WiFiClient.h>
+  #include <WebServer.h>
+  #include "esp_task_wdt.h"
+
+  #define ESP_getChipId()   ((uint32_t)ESP.getEfuseMac())
+
+  #define LED_ON      HIGH
+  #define LED_OFF     LOW
+#else
+  #include <ESP8266WiFi.h>          //https://github.com/esp8266/Arduino
+  //needed for library
+  #include <DNSServer.h>
+  #include <ESP8266WebServer.h>
+
+  #define ESP_getChipId()   (ESP.getChipId())
+
+  #define LED_ON      LOW
+  #define LED_OFF     HIGH
+#endif
+
+#include <ESP_WiFiManager.h>
 
 class NidayandHelper {
   public:
@@ -25,7 +51,7 @@ class NidayandHelper {
 
     void mqtt_publish(PubSubClient& psclient, String topic, String payload);
 
-    void resetsettings(WiFiManager& wifim);
+    void resetsettings(ESP_WiFiManager& wifim);
 
   private:
     JsonVariant _config;

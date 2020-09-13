@@ -1,13 +1,10 @@
-#include <Stepper_28BYJ_48.h>
-#include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
-#include <PubSubClient.h>
+#define _WIFIMGR_LOGLEVEL_ 4
+#define USE_AVAILABLE_PAGES true
+
+#include <CheapStepper.h>
+//#include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
-#include <WiFiManager.h>
-#include <ArduinoJson.h>
-#include "FS.h"
-#include <WiFiClient.h>
-#include <ESP8266WebServer.h>
+
 #include <WebSocketsServer.h>
 #include <ArduinoOTA.h>
 #include "NidayandHelper.h"
@@ -18,18 +15,19 @@
 //Configure Default Settings for Access Point logon
 String APid = "BlindsConnectAP";    //Name of access point
 String APpw = "nidayand";           //Hardcoded password for access point
+// SSID and PW for your Router
+String Router_SSID;
+String Router_Pass;
 
 //----------------------------------------------------
 
 // Version number for checking if there are new code releases and notifying the user
-String version = "1.3.3-egor";
+String version = "1.4.0-egor";
 
 NidayandHelper helper = NidayandHelper();
 
 //Fixed settings for WIFI
 WiFiClient espClient;
-//Setup WIFI Manager
-WiFiManager wifiManager;
 PubSubClient psclient(espClient);   //MQTT client
 char mqtt_server[40];             //WIFI config: MQTT server config (optional)
 char mqtt_port[6] = "1883";       //WIFI config: MQTT port config (optional)
@@ -60,22 +58,20 @@ int set3;
 int pos3;
 
 int path1 = 0;                       //Direction of blind (1 = down, 0 = stop, -1 = up)
-int setPos1 = 0;                     //The set position 0-100% by the client
-
 int path2 = 0;                       //Direction of blind (1 = down, 0 = stop, -1 = up)
-int setPos2 = 0;
-
 int path3 = 0;                       //Direction of blind (1 = down, 0 = stop, -1 = up)
-int setPos3 = 0;
 
-long currentPosition1 = 0;
-long maxPosition1 = 100000;
+int currentPosition1 = 0;
+int targetPosition1 = 0;                     //The set position 0-100% by the client
+int maxPosition1 = 100000;
 
-long currentPosition2 = 0;
-long maxPosition2 = 100000;
+int currentPosition2 = 0;
+int targetPosition2 = 0;
+int maxPosition2 = 100000;
 
-long currentPosition3 = 0;
-long maxPosition3 = 100000;
+int currentPosition3 = 0;
+int targetPosition3 = 0;
+int maxPosition3 = 100000;
 
 boolean loadDataSuccess = false;
 boolean saveItNow = false;          //If true will store positions to SPIFFS
@@ -83,11 +79,30 @@ bool shouldSaveConfig = false;      //Used for WIFI Manager callback to save par
 boolean initLoop = true;            //To enable actions first time the loop is run
 boolean ccw = true;                 //Turns counter clockwise to lower the curtain
 
-Stepper_28BYJ_48 Stepper1(D1, D2, D3, D4); //Initiate stepper driver
-Stepper_28BYJ_48 Stepper2(D5, D6, D7, D8);
-Stepper_28BYJ_48 Stepper3(D9, D9, D9, D9); // not used by me now
+#define M1_1 25
+#define M1_2 26
+#define M1_3 32
+#define M1_4 33
+CheapStepper Stepper1(M1_1, M1_2, M1_3, M1_4); //Initiate stepper driver
 
-ESP8266WebServer server(80);              // TCP server at port 80 will respond to HTTP requests
+#define M2_1 27
+#define M2_2 14
+#define M2_3 12
+#define M2_4 13
+CheapStepper Stepper2(M2_1, M2_2, M2_3, M2_4);
+
+#define M3_1 17
+#define M3_2 5
+#define M3_3 18
+#define M3_4 19
+CheapStepper Stepper3(M3_1, M3_2, M3_3, M3_4);
+
+#ifdef ESP32
+  WebServer server(80);              // TCP server at port 80 will respond to HTTP requests
+#else
+  ESP8266WebServer server(80);              // TCP server at port 80 will respond to HTTP requests
+#endif
+
 WebSocketsServer webSocket = WebSocketsServer(81);  // WebSockets will respond on port 81
 
 bool loadConfig() {
@@ -144,11 +159,11 @@ bool saveConfig() {
    Finally, close down the connection and radio
 */
 void sendmsg(String topic) {
-  set1 = (setPos1 * 100)/maxPosition1;
+  set1 = (targetPosition1 * 100)/maxPosition1;
   pos1 = (currentPosition1 * 100)/maxPosition1;
-  set2 = (setPos2 * 100)/maxPosition2;
+  set2 = (targetPosition2 * 100)/maxPosition2;
   pos2 = (currentPosition2 * 100)/maxPosition2;
-  set3 = (setPos3 * 100)/maxPosition3;
+  set3 = (targetPosition3 * 100)/maxPosition3;
   pos3 = (currentPosition3 * 100)/maxPosition3;
     
   msg = "{ \"set1\":"+String(set1)+", \"position1\":"+String(pos1)+", ";
@@ -217,27 +232,26 @@ void processMsg(String command, String value, int motor_num, uint8_t clientnum){
       action3 = "manual";
     }
 
-  } else if (command == "manual" && value == "0") {
+  } else if ((command == "manual" && value == "0") || value == "STOP") {
     /*
        Stop
     */
-   
     if (motor_num == 1) {
       path1 = 0;
       saveItNow = true;
-      action1 = "manual";
+      action1 = "";
     }
     else if (motor_num == 2)
     {
       path2 = 0;
       saveItNow = true;
-      action2 = "manual";
+      action2 = "";
     }
     else if (motor_num == 3)
     {
       path3 = 0;
       saveItNow = true;
-      action3 = "manual";
+      action3 = "";
     }
 
   } else if (command == "manual" && value == "1") {
@@ -291,15 +305,17 @@ void processMsg(String command, String value, int motor_num, uint8_t clientnum){
        Incoming value = 0-100
        path is now the position
     */
-    
     Serial.println("Received position " + value);
     if (motor_num == 1) {
       path1 = maxPosition1 * value.toInt() / 100;
-      setPos1 = path1; //Copy path for responding to updates
+      targetPosition1 = path1; //Copy path for responding to updates
       action1 = "auto";
 
-      set1 = (setPos1 * 100)/maxPosition1;
+      set1 = (targetPosition1 * 100)/maxPosition1;
       pos1 = (currentPosition1 * 100)/maxPosition1;
+
+      Serial.printf("Starting movement of Stepper1. currentPosition %i; targetPosition %i \n", currentPosition1, targetPosition1);
+      Stepper1.newMove(currentPosition1 < targetPosition1, abs(currentPosition1 - targetPosition1));
 
       //Send the instruction to all connected devices
       sendmsg(outputTopic);
@@ -307,11 +323,14 @@ void processMsg(String command, String value, int motor_num, uint8_t clientnum){
     else if (motor_num == 2)
     {
       path2 = maxPosition2 * value.toInt() / 100;
-      setPos2 = path2; //Copy path for responding to updates
+      targetPosition2 = path2; //Copy path for responding to updates
       action2 = "auto";
 
-      set2 = (setPos2 * 100)/maxPosition2;
+      set2 = (targetPosition2 * 100)/maxPosition2;
       pos2 = (currentPosition2 * 100)/maxPosition2;
+
+      Serial.printf("Starting movement of Stepper2. currentPosition %i; targetPosition %i \n", currentPosition2, targetPosition2);
+      Stepper2.newMove(currentPosition2 < targetPosition2, abs(currentPosition2 - targetPosition2));
 
       //Send the instruction to all connected devices
       sendmsg(outputTopic);
@@ -319,11 +338,14 @@ void processMsg(String command, String value, int motor_num, uint8_t clientnum){
     else if (motor_num == 3)
     {
       path3 = maxPosition3 * value.toInt() / 100;
-      setPos3 = path3; //Copy path for responding to updates
+      targetPosition3 = path3; //Copy path for responding to updates
       action3 = "auto";
 
-      set3 = (setPos3 * 100)/maxPosition3;
+      set3 = (targetPosition3 * 100)/maxPosition3;
       pos3 = (currentPosition3 * 100)/maxPosition3;
+
+      Serial.printf("Starting movement of Stepper3. currentPosition %i; targetPosition %i \n", currentPosition3, targetPosition3);
+      Stepper3.newMove(currentPosition3 < targetPosition3, abs(currentPosition3 - targetPosition3));
 
       //Send the instruction to all connected devices
       sendmsg(outputTopic);
@@ -382,10 +404,6 @@ void handleRoot() {
   server.send(200, "text/html", INDEX_HTML);
 }
 
-void handleResetSettings() {
-  helper.resetsettings(wifiManager);
-}
-
 void handleNotFound(){
   String message = "File Not Found\n\n";
   message += "URI: ";
@@ -405,7 +423,24 @@ void setup(void)
 {
   Serial.begin(115200);
   delay(100);
-  Serial.print("Starting now\n");
+  
+  Serial.println("Starting now...");
+
+//Load config upon start
+  Serial.println("Initializing SPIFFS...");
+  if (!SPIFFS.begin()) {
+    Serial.println("Failed to mount file system");
+    return;
+  }
+
+  // Serial.println("Formatting spiffs now...");
+  // SPIFFS.format();
+  // Serial.println("done format.");
+
+  //Setup WIFI Manager
+  ESP_WiFiManager wifiManager;
+  wifiManager.setDebugOutput(true);
+  wifiManager.setConfigPortalTimeout(1);
 
   //Reset the action
   action1 = "";
@@ -419,17 +454,22 @@ void setup(void)
   inputTopic3 = helper.mqtt_gettopic("in3");
 
   //Set the WIFI hostname
+#ifdef ESP32
+  WiFi.setHostname(config_name);
+#else //ESP8266
   WiFi.hostname(config_name);
+#endif
 
   //Define customer parameters for WIFI Manager
-  WiFiManagerParameter custom_config_name("Name", "Bonjour name", config_name, 40);
-  WiFiManagerParameter custom_rotation("Rotation", "Clockwise rotation", config_rotation, 40);
-  WiFiManagerParameter custom_text("<p><b>Optional MQTT server parameters:</b></p>");
-  WiFiManagerParameter custom_mqtt_server("server", "MQTT server", mqtt_server, 40);
-  WiFiManagerParameter custom_mqtt_port("port", "MQTT port", mqtt_port, 6);
-  WiFiManagerParameter custom_mqtt_uid("uid", "MQTT username", mqtt_server, 40);
-  WiFiManagerParameter custom_mqtt_pwd("pwd", "MQTT password", mqtt_server, 40);
-  WiFiManagerParameter custom_text2("<script>t = document.createElement('div');t2 = document.createElement('input');t2.setAttribute('type', 'checkbox');t2.setAttribute('id', 'tmpcheck');t2.setAttribute('style', 'width:10%');t2.setAttribute('onclick', \"if(document.getElementById('Rotation').value == 'false'){document.getElementById('Rotation').value = 'true'} else {document.getElementById('Rotation').value = 'false'}\");t3 = document.createElement('label');tn = document.createTextNode('Clockwise rotation');t3.appendChild(t2);t3.appendChild(tn);t.appendChild(t3);document.getElementById('Rotation').style.display='none';document.getElementById(\"Rotation\").parentNode.insertBefore(t, document.getElementById(\"Rotation\"));</script>");
+  Serial.println("Configuring WiFi-manager parameters...");
+  ESP_WMParameter custom_config_name("Name", "Bonjour name", config_name, 40);
+  ESP_WMParameter custom_rotation("Rotation", "Clockwise rotation", config_rotation, 40);
+  ESP_WMParameter custom_text("<p><b>Optional MQTT server parameters:</b></p>");
+  ESP_WMParameter custom_mqtt_server("server", "MQTT server", mqtt_server, 40);
+  ESP_WMParameter custom_mqtt_port("port", "MQTT port", mqtt_port, 6);
+  ESP_WMParameter custom_mqtt_uid("uid", "MQTT username", mqtt_server, 40);
+  ESP_WMParameter custom_mqtt_pwd("pwd", "MQTT password", mqtt_server, 40);
+  ESP_WMParameter custom_text2("<script>t = document.createElement('div');t2 = document.createElement('input');t2.setAttribute('type', 'checkbox');t2.setAttribute('id', 'tmpcheck');t2.setAttribute('style', 'width:10%');t2.setAttribute('onclick', \"if(document.getElementById('Rotation').value == 'false'){document.getElementById('Rotation').value = 'true'} else {document.getElementById('Rotation').value = 'false'}\");t3 = document.createElement('label');tn = document.createTextNode('Clockwise rotation');t3.appendChild(t2);t3.appendChild(tn);t.appendChild(t3);document.getElementById('Rotation').style.display='none';document.getElementById(\"Rotation\").parentNode.insertBefore(t, document.getElementById(\"Rotation\"));</script>");
 
   //reset settings - for testing
   //clean FS, for testing
@@ -447,13 +487,18 @@ void setup(void)
   wifiManager.addParameter(&custom_mqtt_pwd);
   wifiManager.addParameter(&custom_text2);
 
-  wifiManager.autoConnect(APid.c_str(), APpw.c_str());
-
-  //Load config upon start
-  if (!SPIFFS.begin()) {
-    Serial.println("Failed to mount file system");
-    return;
+  
+  Router_SSID = wifiManager.WiFi_SSID();
+  Router_Pass = wifiManager.WiFi_Pass();
+  //Remove this line if you do not want to see WiFi password printed
+  Serial.println("Stored: SSID = " + Router_SSID + ", Pass = " + Router_Pass);
+  if (Router_SSID != "") {
+    Serial.println("Got stored Credentials.");
+  } else {
+    Serial.println("No stored Credentials. No timeout");
   }
+
+  wifiManager.autoConnect(APid.c_str(), APpw.c_str());
 
   /* Save the config back from WIFI Manager.
       This is only called after configuration
@@ -492,23 +537,23 @@ void setup(void)
   /*
     Setup multi DNS (Bonjour)
     */
-  if (MDNS.begin(config_name)) {
-    Serial.println("MDNS responder started");
-    MDNS.addService("http", "tcp", 80);
-    MDNS.addService("ws", "tcp", 81);
+  // if (MDNS.begin(config_name)) {
+  //   Serial.println("MDNS responder started");
+  //   MDNS.addService("http", "tcp", 80);
+  //   MDNS.addService("ws", "tcp", 81);
 
-  } else {
-    Serial.println("Error setting up MDNS responder!");
-    while(1) {
-      delay(1000);
-    }
-  }
+  // } else {
+  //   Serial.println("Error setting up MDNS responder!");
+  //   while(1) {
+  //     delay(1000);
+  //   }
+  // }
   Serial.print("Connect to http://"+String(config_name)+".local or http://");
   Serial.println(WiFi.localIP());
 
   //Start HTTP server
   server.on("/", handleRoot);
-  server.on("/reset", handleResetSettings);
+  server.on("/reset", [&]{ helper.resetsettings(wifiManager); });
   server.onNotFound(handleNotFound);
   server.begin();
 
@@ -568,7 +613,16 @@ void setup(void)
     });
     ArduinoOTA.begin();
   }
+
+  Stepper1.setRpm(30);
+  Stepper2.setRpm(30);
+  Stepper3.setRpm(30);
+
+#ifdef ESP32
+  esp_task_wdt_init(10, true);
+#else
   ESP.wdtDisable();
+#endif
 }
 
 /**
@@ -576,17 +630,22 @@ void setup(void)
   is not moving
 */
 void stopPowerToCoils() {
-  digitalWrite(D1, LOW);
-  digitalWrite(D2, LOW);
-  digitalWrite(D3, LOW);
-  digitalWrite(D4, LOW);
+  digitalWrite(M1_1, LOW);
+  digitalWrite(M1_2, LOW);
+  digitalWrite(M1_3, LOW);
+  digitalWrite(M1_4, LOW);
 
-  digitalWrite(D5, LOW);
-  digitalWrite(D6, LOW);
-  digitalWrite(D7, LOW);
-  digitalWrite(D8, LOW);
+  digitalWrite(M2_1, LOW);
+  digitalWrite(M2_2, LOW);
+  digitalWrite(M2_3, LOW);
+  digitalWrite(M2_4, LOW);
 
-  digitalWrite(D9, LOW);
+  digitalWrite(M3_1, LOW);
+  digitalWrite(M3_2, LOW);
+  digitalWrite(M3_3, LOW);
+  digitalWrite(M3_4, LOW);
+
+//  digitalWrite(D9, LOW);
 }
 
 void loop(void)
@@ -596,8 +655,12 @@ void loop(void)
 
   //Websocket listner
   webSocket.loop();
-
+#ifdef ESP32
+  esp_task_wdt_reset();
+#else //ESP8266
   ESP.wdtFeed();
+#endif
+
 
   /**
     Serving the webpage
@@ -624,86 +687,54 @@ void loop(void)
     Manage actions. Steering of the blind
   */
   if (action1 == "auto") {
-    /*
-       Automatically open or close blind
-    */
-    if (currentPosition1 > path1){
-      Stepper1.step(ccw ? -1: 1);
-      currentPosition1 = currentPosition1 - 1;
-    } else if (currentPosition1 < path1){
-      Stepper1.step(ccw ? 1 : -1);
-      currentPosition1 = currentPosition1 + 1;
-    } else {
+    Stepper1.run();
+    currentPosition1 = targetPosition1 - Stepper1.getStepsLeft();
+    if (currentPosition1 == targetPosition1) {
       path1 = 0;
       action1 = "";
-      set1 = (setPos1 * 100)/maxPosition1;
+      set1 = (targetPosition1 * 100)/maxPosition1;
       pos1 = (currentPosition1 * 100)/maxPosition1;
       sendmsg(outputTopic);
-      Serial.println("Stopped 1. Reached wanted position");
+      Serial.println("Stepper 1 has reached target position.");
       saveItNow = true;
     }
-
   } else if (action1 == "manual" && path1 != 0) {
-    /*
-       Manually running the blind
-    */
-    Stepper1.step(ccw ? path1 : -path1);
+    Stepper1.move(path1 > 0, abs(path1));
     currentPosition1 = currentPosition1 + path1;
   }
 
+
   if (action2 == "auto") {
-    /*
-       Automatically open or close blind
-    */
-    if (currentPosition2 > path2){
-      Stepper2.step(ccw ? -1: 1);
-      currentPosition2 = currentPosition2 - 1;
-    } else if (currentPosition2 < path2){
-      Stepper2.step(ccw ? 1 : -1);
-      currentPosition2 = currentPosition2 + 1;
-    } else {
+    Stepper2.run();
+    currentPosition2 = targetPosition2 - Stepper2.getStepsLeft();
+    if (currentPosition2 == targetPosition2) {
       path2 = 0;
       action2 = "";
-      set2 = (setPos2 * 100)/maxPosition2;
+      set2 = (targetPosition2 * 100)/maxPosition2;
       pos2 = (currentPosition2 * 100)/maxPosition2;
       sendmsg(outputTopic);
-      Serial.println("Stopped 2. Reached wanted position");
+      Serial.println("Stepper 2 has reached target position.");
       saveItNow = true;
     }
-
- } else if (action2 == "manual" && path2 != 0) {
-    /*
-       Manually running the blind
-    */
-    Stepper2.step(ccw ? path2 : -path2);
+  } else if (action2 == "manual" && path2 != 0) {
+    Stepper2.move(path2 > 0, abs(path2));
     currentPosition2 = currentPosition2 + path2;
   }
 
   if (action3 == "auto") {
-    /*
-       Automatically open or close blind
-    */
-    if (currentPosition3 > path3){
-      Stepper3.step(ccw ? -1: 1);
-      currentPosition3 = currentPosition3 - 1;
-    } else if (currentPosition3 < path3){
-      Stepper3.step(ccw ? 1 : -1);
-      currentPosition3 = currentPosition3 + 1;
-    } else {
+    Stepper3.run();
+    currentPosition3 = targetPosition3 - Stepper3.getStepsLeft();
+    if (currentPosition3 == targetPosition3) {
       path3 = 0;
       action3 = "";
-      set3 = (setPos3 * 100)/maxPosition3;
+      set3 = (targetPosition3 * 100)/maxPosition3;
       pos3 = (currentPosition3 * 100)/maxPosition3;
       sendmsg(outputTopic);
-      Serial.println("Stopped 3. Reached wanted position");
+      Serial.println("Stepper 3 has reached target position.");
       saveItNow = true;
     }
-
   } else if (action3 == "manual" && path3 != 0) {
-    /*
-       Manually running the blind
-    */
-    Stepper3.step(ccw ? path3 : -path3);
+    Stepper3.move(path3 > 0, abs(path3));
     currentPosition3 = currentPosition3 + path3;
   }
 
