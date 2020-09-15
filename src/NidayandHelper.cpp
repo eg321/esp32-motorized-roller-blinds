@@ -84,6 +84,7 @@ void NidayandHelper::mqtt_reconnect(PubSubClient& psclient, String uid, String p
     mqttLogon = true;
   }
   while (!psclient.connected() && ++connectRetries < 5) {
+    Serial.printf("MQTT Login: '%s', pass: '%s'\n", uid.c_str(), pwd.c_str());
     Serial.printf("Attempting MQTT connection %i...\n", connectRetries);
     // Attempt to connect
     if ((mqttLogon ? psclient.connect(this->_mqttclientid.c_str(), uid.c_str(), pwd.c_str()) : psclient.connect(this->_mqttclientid.c_str()))) {
@@ -119,24 +120,27 @@ void NidayandHelper::mqtt_reconnect(PubSubClient& psclient, String uid, String p
 }
 
 void NidayandHelper::mqtt_publish(PubSubClient& psclient, String topic, String payload){
-  Serial.println("Trying to send msg..."+topic+":"+payload);
+  Serial.println("Trying to send msg to the '" + topic + "': " + payload);
   //Send status to MQTT bus if connected
   if (psclient.connected()) {
-    psclient.publish(topic.c_str(), payload.c_str());
+    if (!psclient.publish(topic.c_str(), payload.c_str())) {
+      Serial.println(F("Cannot send message to the MQTT server."));
+    }
   } else {
     Serial.println("PubSub client is not connected...");
   }
 }
 
-void NidayandHelper::resetsettings(ESP_WiFiManager& wifim){
-  wifim.resetSettings();
+void NidayandHelper::resetsettings() {
   delay(500);
-  SPIFFS.format();
-  Serial.println("Settings cleared");
+  Serial.println(F("Clearing settings..."));
 #ifdef ESP8266
-    ESP.reset();
+  LittleFS.format();
+  ESP.reset();
 #else   //ESP32
-    ESP.restart();
+  SPIFFS.format();
+  ESP.restart();
 #endif
-    delay(1000);
+  Serial.println(F("Settings cleared!"));
+  delay(1000);
 }

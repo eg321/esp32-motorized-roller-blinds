@@ -11,14 +11,6 @@
 #include "index_html.h"
 #include <string>
 
-//--------------- CHANGE PARAMETERS ------------------
-//Configure Default Settings for Access Point logon
-String APid = "BlindsConnectAP";    //Name of access point
-String APpw = "nidayand";           //Hardcoded password for access point
-// SSID and PW for your Router
-String Router_SSID;
-String Router_Pass;
-
 //----------------------------------------------------
 
 // Version number for checking if there are new code releases and notifying the user
@@ -29,18 +21,17 @@ NidayandHelper helper = NidayandHelper();
 //Fixed settings for WIFI
 WiFiClient espClient;
 PubSubClient psclient(espClient);   //MQTT client
-char mqtt_server[40];             //WIFI config: MQTT server config (optional)
-char mqtt_port[6] = "1883";       //WIFI config: MQTT port config (optional)
-char mqtt_uid[40];             //WIFI config: MQTT server username (optional)
-char mqtt_pwd[40];             //WIFI config: MQTT server password (optional)
+String mqttServer;           //WIFI config: MQTT server config (optional)
+int mqttPort = 1883;         //WIFI config: MQTT port config (optional)
+String mqttUser;             //WIFI config: MQTT server username (optional)
+String mqttPwd;             //WIFI config: MQTT server password (optional)
 
 String outputTopic;               //MQTT topic for sending messages
 String inputTopic1;                //MQTT topic for listening
 String inputTopic2;
 String inputTopic3;
 boolean mqttActive = true;
-char config_name[40];             //WIFI config: Bonjour name of device
-char config_rotation[40] = "false"; //WIFI config: Detault rotation is CCW
+String deviceHostname;             //WIFI config: Bonjour name of device
 unsigned long lastBlink = 0;
 int state = 0;
 long lastPublish = 0;
@@ -74,10 +65,8 @@ int targetPosition3 = 0;
 int maxPosition3 = 100000;
 
 boolean loadDataSuccess = false;
-boolean saveItNow = false;          //If true will store positions to SPIFFS
-bool shouldSaveConfig = false;      //Used for WIFI Manager callback to save parameters
+boolean saveItNow = false;          //If true will store positions to filesystem
 boolean initLoop = true;            //To enable actions first time the loop is run
-boolean ccw = true;                 //Turns counter clockwise to lower the curtain
 
 #define M1_1 25
 #define M1_2 26
@@ -121,18 +110,12 @@ bool loadConfig() {
   maxPosition2 = root["maxPosition2"]; // 40000
   currentPosition3 = root["currentPosition3"]; // 60000
   maxPosition3 = root["maxPosition3"]; // 60000
-  strcpy(config_name, root["config_name"]);
-  strcpy(mqtt_server, root["mqtt_server"]);
-  strcpy(mqtt_port, root["mqtt_port"]);
-  strcpy(mqtt_uid, root["mqtt_uid"]);
-  strcpy(mqtt_pwd, root["mqtt_pwd"]);
-  strcpy(config_rotation, root["config_rotation"]);
+
   return true;
 }
 
 /**
    Save configuration data to a JSON file
-   on SPIFFS
 */
 bool saveConfig() {
   const size_t capacity = JSON_OBJECT_SIZE(12);
@@ -144,12 +127,6 @@ bool saveConfig() {
   json["maxPosition2"] = maxPosition2;
   json["currentPosition3"] = currentPosition3;
   json["maxPosition3"] = maxPosition3;
-  json["config_name"] = config_name;
-  json["mqtt_server"] = mqtt_server;
-  json["mqtt_port"] = mqtt_port;
-  json["mqtt_uid"] = mqtt_uid;
-  json["mqtt_pwd"] = mqtt_pwd;
-  json["config_rotation"] = config_rotation;
 
   return helper.saveconfig(json);
 }
@@ -174,6 +151,11 @@ void sendmsg(String topic) {
     return;
 
   helper.mqtt_publish(psclient, topic, msg);
+
+  helper.mqtt_publish(psclient, helper.mqtt_gettopic("out1"), String(pos1));
+  helper.mqtt_publish(psclient, helper.mqtt_gettopic("out2"), String(pos2));
+  helper.mqtt_publish(psclient, helper.mqtt_gettopic("out3"), String(pos3));
+
   webSocket.broadcastTXT(msg);
 }
 /****************************************************************************************
@@ -393,13 +375,6 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     processMsg("auto", res, motor_id, NULL);
 }
 
-/*
-   Callback from WIFI Manager for saving configuration
-*/
-void saveConfigCallback () {
-  shouldSaveConfig = true;
-}
-
 void handleRoot() {
   server.send(200, "text/html", INDEX_HTML);
 }
@@ -419,28 +394,56 @@ void handleNotFound(){
   server.send(404, "text/plain", message);
 }
 
-void setup(void)
-{
+void setupOTA() {
+  // Authentication to avoid unauthorized updates
+  //ArduinoOTA.setPassword(OTA_PWD);
+
+  ArduinoOTA.setHostname(deviceHostname.c_str());
+
+  ArduinoOTA.onStart([]() {
+    Serial.println("Start OTA");
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nEnd OTA");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("OTA Progress: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("OTA Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+    else if (error == OTA_END_ERROR) Serial.println("End Failed");
+  });
+  
+  ArduinoOTA.begin();
+}
+
+void setup(void) {
   Serial.begin(115200);
   delay(100);
   
   Serial.println("Starting now...");
 
 //Load config upon start
-  Serial.println("Initializing SPIFFS...");
+  Serial.println("Initializing filesystem...");
+#ifdef ESP32  
   if (!SPIFFS.begin()) {
     Serial.println("Failed to mount file system");
     return;
   }
+#else //ESP8266
+  if (!LittleFS.begin()) {
+    Serial.println("Failed to mount file system");
+    return;
+  }
+#endif
 
   // Serial.println("Formatting spiffs now...");
   // SPIFFS.format();
   // Serial.println("done format.");
-
-  //Setup WIFI Manager
-  ESP_WiFiManager wifiManager;
-  wifiManager.setDebugOutput(true);
-  wifiManager.setConfigPortalTimeout(1);
 
   //Reset the action
   action1 = "";
@@ -455,67 +458,31 @@ void setup(void)
 
   //Set the WIFI hostname
 #ifdef ESP32
-  WiFi.setHostname(config_name);
+  WiFi.setHostname(deviceHostname.c_str());
 #else //ESP8266
-  WiFi.hostname(config_name);
+  WiFi.hostname(deviceHostname);
 #endif
 
   //Define customer parameters for WIFI Manager
   Serial.println("Configuring WiFi-manager parameters...");
-  ESP_WMParameter custom_config_name("Name", "Bonjour name", config_name, 40);
-  ESP_WMParameter custom_rotation("Rotation", "Clockwise rotation", config_rotation, 40);
-  ESP_WMParameter custom_text("<p><b>Optional MQTT server parameters:</b></p>");
-  ESP_WMParameter custom_mqtt_server("server", "MQTT server", mqtt_server, 40);
-  ESP_WMParameter custom_mqtt_port("port", "MQTT port", mqtt_port, 6);
-  ESP_WMParameter custom_mqtt_uid("uid", "MQTT username", mqtt_server, 40);
-  ESP_WMParameter custom_mqtt_pwd("pwd", "MQTT password", mqtt_server, 40);
-  ESP_WMParameter custom_text2("<script>t = document.createElement('div');t2 = document.createElement('input');t2.setAttribute('type', 'checkbox');t2.setAttribute('id', 'tmpcheck');t2.setAttribute('style', 'width:10%');t2.setAttribute('onclick', \"if(document.getElementById('Rotation').value == 'false'){document.getElementById('Rotation').value = 'true'} else {document.getElementById('Rotation').value = 'false'}\");t3 = document.createElement('label');tn = document.createTextNode('Clockwise rotation');t3.appendChild(t2);t3.appendChild(tn);t.appendChild(t3);document.getElementById('Rotation').style.display='none';document.getElementById(\"Rotation\").parentNode.insertBefore(t, document.getElementById(\"Rotation\"));</script>");
+  
+  deviceHostname = WiFiSettings.string("Name", 40, "");
+  mqttServer = WiFiSettings.string("MQTT server", 40);
+  mqttPort = WiFiSettings.integer("MQTT port", 0, 65535, 1883);
+  mqttUser = WiFiSettings.string("MQTT username", 40);
+  mqttPwd = WiFiSettings.string("MQTT password", 40);
 
   //reset settings - for testing
   //clean FS, for testing
-  // helper.resetsettings(wifiManager);
+  // helper.resetsettings();
 
-
-  wifiManager.setSaveConfigCallback(saveConfigCallback);
-  //add all your parameters here
-  wifiManager.addParameter(&custom_config_name);
-  wifiManager.addParameter(&custom_rotation);
-  wifiManager.addParameter(&custom_text);
-  wifiManager.addParameter(&custom_mqtt_server);
-  wifiManager.addParameter(&custom_mqtt_port);
-  wifiManager.addParameter(&custom_mqtt_uid);
-  wifiManager.addParameter(&custom_mqtt_pwd);
-  wifiManager.addParameter(&custom_text2);
-
-  
-  Router_SSID = wifiManager.WiFi_SSID();
-  Router_Pass = wifiManager.WiFi_Pass();
-  //Remove this line if you do not want to see WiFi password printed
-  Serial.println("Stored: SSID = " + Router_SSID + ", Pass = " + Router_Pass);
-  if (Router_SSID != "") {
-    Serial.println("Got stored Credentials.");
-  } else {
-    Serial.println("No stored Credentials. No timeout");
-  }
-
-  wifiManager.autoConnect(APid.c_str(), APpw.c_str());
-
-  /* Save the config back from WIFI Manager.
-      This is only called after configuration
-      when in AP mode
-  */
-  if (shouldSaveConfig) {
-    //read updated parameters
-    strcpy(config_name, custom_config_name.getValue());
-    strcpy(mqtt_server, custom_mqtt_server.getValue());
-    strcpy(mqtt_port, custom_mqtt_port.getValue());
-    strcpy(mqtt_uid, custom_mqtt_uid.getValue());
-    strcpy(mqtt_pwd, custom_mqtt_pwd.getValue());
-    strcpy(config_rotation, custom_rotation.getValue());
-
-    //Save the data
-    saveConfig();
-  }
+  WiFiSettings.onPortal = []() {
+      setupOTA();
+  };
+  WiFiSettings.onPortalWaitLoop = []() {
+        ArduinoOTA.handle();
+  };
+  WiFiSettings.connect();
 
   /*
      Try to load FS data configuration every time when
@@ -537,7 +504,7 @@ void setup(void)
   /*
     Setup multi DNS (Bonjour)
     */
-  // if (MDNS.begin(config_name)) {
+  // if (MDNS.begin(deviceHostname)) {
   //   Serial.println("MDNS responder started");
   //   MDNS.addService("http", "tcp", 80);
   //   MDNS.addService("ws", "tcp", 81);
@@ -548,12 +515,12 @@ void setup(void)
   //     delay(1000);
   //   }
   // }
-  Serial.print("Connect to http://"+String(config_name)+".local or http://");
+  Serial.print("Connect to http://"+String(deviceHostname)+".local or http://");
   Serial.println(WiFi.localIP());
 
   //Start HTTP server
   server.on("/", handleRoot);
-  server.on("/reset", [&]{ helper.resetsettings(wifiManager); });
+  server.on("/reset", [&]{ helper.resetsettings(); });
   server.onNotFound(handleNotFound);
   server.begin();
 
@@ -564,55 +531,20 @@ void setup(void)
   /* Setup connection for MQTT and for subscribed
     messages IF a server address has been entered
   */
-  if (String(mqtt_server) != ""){
+  if (String(mqttServer) != ""){
     Serial.println("Registering MQTT server");
-    psclient.setServer(mqtt_server, String(mqtt_port).toInt());
+    psclient.setServer(mqttServer.c_str(), mqttPort);
     psclient.setCallback(mqttCallback);
-
   } else {
     mqttActive = false;
     Serial.println("NOTE: No MQTT server address has been registered. Only using websockets");
   }
 
-  /* Set rotation direction of the blinds */
-  if (String(config_rotation) == "false"){
-    ccw = true;
-  } else {
-    ccw = false;
-  }
-
   //Update webpage
   INDEX_HTML.replace("{VERSION}","V"+version);
-  INDEX_HTML.replace("{NAME}",String(config_name));
+  INDEX_HTML.replace("{NAME}",String(deviceHostname));
 
-
-  //Setup OTA
-  //helper.ota_setup(config_name);
-  {
-    // Authentication to avoid unauthorized updates
-    //ArduinoOTA.setPassword(OTA_PWD);
-
-    ArduinoOTA.setHostname(config_name);
-
-    ArduinoOTA.onStart([]() {
-      Serial.println("Start");
-    });
-    ArduinoOTA.onEnd([]() {
-      Serial.println("\nEnd");
-    });
-    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-      Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-    });
-    ArduinoOTA.onError([](ota_error_t error) {
-      Serial.printf("Error[%u]: ", error);
-      if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-      else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-      else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-      else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-      else if (error == OTA_END_ERROR) Serial.println("End Failed");
-    });
-    ArduinoOTA.begin();
-  }
+  setupOTA();  
 
   Stepper1.setRpm(30);
   Stepper2.setRpm(30);
@@ -668,8 +600,8 @@ void loop(void)
   server.handleClient();
 
   //MQTT client
-  if (mqttActive){
-    helper.mqtt_reconnect(psclient, mqtt_uid, mqtt_pwd, { inputTopic1.c_str(), inputTopic2.c_str(), inputTopic3.c_str() });
+  if (mqttActive) {
+    helper.mqtt_reconnect(psclient, mqttUser, mqttPwd, { inputTopic1.c_str(), inputTopic2.c_str(), inputTopic3.c_str() });
   }
 
 

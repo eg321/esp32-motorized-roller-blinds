@@ -8,12 +8,12 @@
 #include "FS.h"
 #include <PubSubClient.h>
 #include <list>
+#include <WiFiSettings.h>
 
 #ifdef ESP32
   #include "SPIFFS.h"
   #include <esp_wifi.h>
   #include <WiFi.h>
-  #include <WiFiClient.h>
   #include <WebServer.h>
   #include "esp_task_wdt.h"
 
@@ -22,6 +22,7 @@
   #define LED_ON      HIGH
   #define LED_OFF     LOW
 #else
+  #include <LittleFS.h>
   #include <ESP8266WiFi.h>          //https://github.com/esp8266/Arduino
   //needed for library
   #include <DNSServer.h>
@@ -32,8 +33,6 @@
   #define LED_ON      LOW
   #define LED_OFF     HIGH
 #endif
-
-#include <ESP_WiFiManager.h>
 
 class NidayandHelper {
   public:
@@ -51,7 +50,7 @@ class NidayandHelper {
 
     void mqtt_publish(PubSubClient& psclient, String topic, String payload);
 
-    void resetsettings(ESP_WiFiManager& wifim);
+    void resetsettings();
 
   private:
     JsonVariant _config;
