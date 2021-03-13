@@ -11,6 +11,7 @@
 # Latest changes:
 ## 1.4.1 (14 March 2021)
   - improve MQTT connection reliability. While MQTT hub is unavailable, controller will try to reconnect once per 60 seconds. In this time web interface will be still available.
+  - fix update notifications and links.
 
 ## 1.4.0 (15 September 2020)
  - Support of ESP32 (ESP8266 should work too). It makes possible to easily connect up to 3 steppers with 4-pins connectors.
