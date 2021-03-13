@@ -20,7 +20,7 @@ NidayandHelper helper = NidayandHelper();
 
 //Fixed settings for WIFI
 WiFiClient espClient;
-PubSubClient psclient(espClient);   //MQTT client
+PubSubClient mqttClient(espClient);   //MQTT client
 String mqttServer;           //WIFI config: MQTT server config (optional)
 int mqttPort = 1883;         //WIFI config: MQTT port config (optional)
 String mqttUser;             //WIFI config: MQTT server username (optional)
@@ -30,7 +30,8 @@ String outputTopic;               //MQTT topic for sending messages
 String inputTopic1;                //MQTT topic for listening
 String inputTopic2;
 String inputTopic3;
-boolean mqttActive = true;
+boolean isMqttEnabled = true;
+unsigned long mqttLastConnectAttempt = 0;
 String deviceHostname;             //WIFI config: Bonjour name of device
 unsigned long lastBlink = 0;
 int state = 0;
@@ -147,14 +148,14 @@ void sendmsg(String topic) {
   msg += "\"set2\":"+String(set2)+", \"position2\":"+String(pos2)+", ";
   msg += "\"set3\":"+String(set3)+", \"position3\":"+String(pos3)+" }";
   // Serial.println(msg);
-  if (!mqttActive)
-    return;
 
-  helper.mqtt_publish(psclient, topic, msg);
+  if (isMqttEnabled && mqttClient.connected()) {
+    helper.mqtt_publish(mqttClient, topic, msg);
 
-  helper.mqtt_publish(psclient, helper.mqtt_gettopic("out1"), String(pos1));
-  helper.mqtt_publish(psclient, helper.mqtt_gettopic("out2"), String(pos2));
-  helper.mqtt_publish(psclient, helper.mqtt_gettopic("out3"), String(pos3));
+    helper.mqtt_publish(mqttClient, helper.mqtt_gettopic("out1"), String(pos1));
+    helper.mqtt_publish(mqttClient, helper.mqtt_gettopic("out2"), String(pos2));
+    helper.mqtt_publish(mqttClient, helper.mqtt_gettopic("out3"), String(pos3));
+  }
 
   webSocket.broadcastTXT(msg);
 }
@@ -533,10 +534,10 @@ void setup(void) {
   */
   if (String(mqttServer) != ""){
     Serial.println("Registering MQTT server");
-    psclient.setServer(mqttServer.c_str(), mqttPort);
-    psclient.setCallback(mqttCallback);
+    mqttClient.setServer(mqttServer.c_str(), mqttPort);
+    mqttClient.setCallback(mqttCallback);
   } else {
-    mqttActive = false;
+    isMqttEnabled = false;
     Serial.println("NOTE: No MQTT server address has been registered. Only using websockets");
   }
 
@@ -600,10 +601,20 @@ void loop(void)
   server.handleClient();
 
   //MQTT client
-  if (mqttActive) {
-    helper.mqtt_reconnect(psclient, mqttUser, mqttPwd, { inputTopic1.c_str(), inputTopic2.c_str(), inputTopic3.c_str() });
+  if (isMqttEnabled) {
+    if (mqttClient.connected()) {
+      mqttClient.loop();
+    } else {
+      unsigned long now = millis();
+      if (now - mqttLastConnectAttempt > 60000) { //once per 60 sec
+          mqttLastConnectAttempt = now;
+          // Attempt to reconnect
+          if (helper.mqtt_reconnect(mqttClient, mqttUser, mqttPwd, { inputTopic1.c_str(), inputTopic2.c_str(), inputTopic3.c_str() })) {
+            mqttLastConnectAttempt = 0;
+          }
+      }
+    }
   }
-
 
   /**
     Storing positioning data and turns off the power to the coils

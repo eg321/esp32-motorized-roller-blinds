@@ -65,65 +65,67 @@ String NidayandHelper::mqtt_gettopic(String type) {
 }
 
 
-void NidayandHelper::mqtt_reconnect(PubSubClient& psclient){
-  return mqtt_reconnect(psclient, "", "");
+boolean NidayandHelper::mqtt_reconnect(PubSubClient& mqttClient){
+  return mqtt_reconnect(mqttClient, "", "");
 }
-void NidayandHelper::mqtt_reconnect(PubSubClient& psclient, std::list<const char*> topics){
-  return mqtt_reconnect(psclient, "", "", topics);
+boolean NidayandHelper::mqtt_reconnect(PubSubClient& mqttClient, std::list<const char*> topics){
+  return mqtt_reconnect(mqttClient, "", "", topics);
 }
-void NidayandHelper::mqtt_reconnect(PubSubClient& psclient, String uid, String pwd){
+boolean NidayandHelper::mqtt_reconnect(PubSubClient& mqttClient, String uid, String pwd){
   std::list<const char*> mylist;
-  return mqtt_reconnect(psclient, uid, pwd, mylist);
+  return mqtt_reconnect(mqttClient, uid, pwd, mylist);
 }
-void NidayandHelper::mqtt_reconnect(PubSubClient& psclient, String uid, String pwd, std::list<const char*> topics){
-  // Loop until we're reconnected
+boolean NidayandHelper::mqtt_reconnect(PubSubClient& mqttClient, String uid, String pwd, std::list<const char*> topics){
   boolean mqttLogon = false;
-  static int connectRetries = 0;
 
   if (!uid.isEmpty() and !pwd.isEmpty()){
     mqttLogon = true;
   }
-  while (!psclient.connected() && ++connectRetries < 5) {
+  if (!mqttClient.connected()) {
     Serial.printf("MQTT Login: '%s', pass: '%s'\n", uid.c_str(), pwd.c_str());
-    Serial.printf("Attempting MQTT connection %i...\n", connectRetries);
     // Attempt to connect
-    if ((mqttLogon ? psclient.connect(this->_mqttclientid.c_str(), uid.c_str(), pwd.c_str()) : psclient.connect(this->_mqttclientid.c_str()))) {
+    if ((mqttLogon ? mqttClient.connect(this->_mqttclientid.c_str(), uid.c_str(), pwd.c_str()) : mqttClient.connect(this->_mqttclientid.c_str()))) {
       Serial.println("connected");
 
       //Send register MQTT message with JSON of chipid and ip-address
-      this->mqtt_publish(psclient, "/raw/esp8266/register", "{ \"id\": \"" + String(ESP_getChipId()) + "\", \"ip\":\"" + WiFi.localIP().toString() +"\"}");
+      this->mqtt_publish(mqttClient, "/raw/esp8266/register", "{ \"id\": \"" + String(ESP_getChipId()) + "\", \"ip\":\"" + WiFi.localIP().toString() +"\"}");
+
+      //HA autodiscovery
+      this->sendAutoDiscovery(mqttClient);
 
       //Setup subscription
       if (!topics.empty()){
         for (const char* t : topics){
-           psclient.subscribe(t);
+           mqttClient.subscribe(t);
            Serial.println("Subscribed to "+String(t));
         }
       }
 
-    } else {
-      Serial.print("failed, rc=");
-      Serial.print(psclient.state());
-      Serial.println(" try again in 5 seconds");
-      // Wait 5 seconds before retrying
-#ifdef ESP32
-      esp_task_wdt_reset();
-#else //ESP8266
-      ESP.wdtFeed();
-#endif
-      delay(5000);
+      return true;
     }
   }
-  if (psclient.connected()){
-    psclient.loop();
+
+  return false;
+}
+
+//Can be use by HomeAssistant to automatically confugure 
+void NidayandHelper::sendAutoDiscovery(PubSubClient& mqttClient) {
+  String haConfig;
+  uint32_t chipId = ESP_getChipId();
+
+  for (int i = 1; i <= 3; i++) {
+    haConfig = "{\"~\": \"/raw/esp8266/" + String(chipId) + "\", \"name\": \"Rollerblind " + String(i) + "\", \"cmd_t\": \"~/in" + String(i) + "\", \"set_pos_t\": \"~/in" + String(i) + "\", \"pos_t\": \"~/out" + String(i) + "\", \"payload_open\": 0, \"payload_close\": 100, \"pos_open\": 0, \"pos_clsd\": 100, \"val_tpl\": \"{{ value | int }}\", \"opt\": false }";
+    haConfig = "{\"~\": \"/raw/esp8266/" + String(chipId) + "\", \"name\": \"Rollerblind " + String(i) + "\", \"cmd_t\": \"~/in" + String(i) + "\", \"set_pos_t\": \"~/in" + String(i) + "\", \"pos_t\": \"~/out" + String(i) + "\", \"pos_open\": 0, \"pos_clsd\": 100, \"val_tpl\": \"{{ value | int }}\" }";
+    this->mqtt_publish(mqttClient, "homeassistant/cover/" + String(chipId) + "/blind" + String(i) + "/config", haConfig);
   }
 }
 
-void NidayandHelper::mqtt_publish(PubSubClient& psclient, String topic, String payload){
+
+void NidayandHelper::mqtt_publish(PubSubClient& mqttClient, String topic, String payload){
   Serial.println("Trying to send msg to the '" + topic + "': " + payload);
   //Send status to MQTT bus if connected
-  if (psclient.connected()) {
-    if (!psclient.publish(topic.c_str(), payload.c_str())) {
+  if (mqttClient.connected()) {
+    if (!mqttClient.publish(topic.c_str(), payload.c_str())) {
       Serial.println(F("Cannot send message to the MQTT server."));
     }
   } else {

@@ -43,12 +43,12 @@ class NidayandHelper {
 
     String mqtt_gettopic(String type);
 
-    void mqtt_reconnect(PubSubClient& psclient);
-    void mqtt_reconnect(PubSubClient& psclient, std::list<const char*> topics);
-    void mqtt_reconnect(PubSubClient& psclient, String uid, String pwd);
-    void mqtt_reconnect(PubSubClient& psclient, String uid, String pwd, std::list<const char*> topics);
+    boolean mqtt_reconnect(PubSubClient& mqttClient);
+    boolean mqtt_reconnect(PubSubClient& mqttClient, std::list<const char*> topics);
+    boolean mqtt_reconnect(PubSubClient& mqttClient, String uid, String pwd);
+    boolean mqtt_reconnect(PubSubClient& mqttClient, String uid, String pwd, std::list<const char*> topics);
 
-    void mqtt_publish(PubSubClient& psclient, String topic, String payload);
+    void mqtt_publish(PubSubClient& mqttClient, String topic, String payload);
 
     void resetsettings();
 
@@ -56,6 +56,7 @@ class NidayandHelper {
     JsonVariant _config;
     String _configfile;
     String _mqttclientid;
+    void sendAutoDiscovery(PubSubClient& mqttClient);
 };
 
 #endif
