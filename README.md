@@ -9,6 +9,9 @@
 - 2-3 pins for steppers are not reversed now. Please check that initilization of steppers is ok for you (near 86 line: Stepper1(D1, D2, D3, D4))
 
 # Latest changes:
+## 1.4.1 (14 March 2021)
+  - improve MQTT connection reliability. While MQTT hub is unavailable, controller will try to reconnect once per 60 seconds. In this time web interface will be still available.
+
 ## 1.4.0 (15 September 2020)
  - Support of ESP32 (ESP8266 should work too). It makes possible to easily connect up to 3 steppers with 4-pins connectors.
  - Switched to "CheapStepper" library. It allows to configure rotation speed (grep for "setRpm(30)" lines - maybe you'll need to adapt it for your motors).
