@@ -12,7 +12,7 @@ String INDEX_HTML = R"(<!DOCTYPE html>
   <script>
   var cversion = '{VERSION}';
   var wsUri = 'ws://'+location.host+':81/';
-  var repo = 'motor-on-roller-blind-ws';
+  var repo = 'esp32-motorized-roller-blinds';
 
   window.fn = {};
   window.fn.open = function() {
@@ -33,7 +33,7 @@ String INDEX_HTML = R"(<!DOCTYPE html>
 
   var setActions = function(){
     doSend('{"action": "update"}');
-    $.get('https://api.github.com/repos/nidayand/'+repo+'/releases', function(data){
+    $.get('https://api.github.com/repos/eg321/'+repo+'/releases', function(data){
       if (data.length>0 && data[0].tag_name !== cversion){
         $('#cversion').text(cversion);
         $('#nversion').text(data[0].tag_name);
@@ -261,7 +261,7 @@ String INDEX_HTML = R"(<!DOCTYPE html>
     </ons-card>
     <ons-card id='update-card' style='display:none'>
       <div class='title'>Update available</div>
-      <div class='content'>You are running <span id='cversion'></span> and <span id='nversion'></span> is the latest. Go to <a href='https://github.com/nidayand/motor-on-roller-blind-ws/releases'>the repo</a> to download</div>
+      <div class='content'>You are running <span id='cversion'></span> and <span id='nversion'></span> is the latest. Go to <a href='https://github.com/eg321/esp32-motorized-roller-blinds/releases'>the repo</a> to download</div>
     </ons-card>
   </ons-page>
 </template>
