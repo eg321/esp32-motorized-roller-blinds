@@ -14,7 +14,7 @@
 //----------------------------------------------------
 
 // Version number for checking if there are new code releases and notifying the user
-String version = "1.4.0-egor";
+String version = "1.4.1-egor";
 
 NidayandHelper helper = NidayandHelper();
 
