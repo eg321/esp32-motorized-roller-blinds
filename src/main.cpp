@@ -1,3 +1,10 @@
+#ifndef USE_BUTTONS             //use mechanical up/down buttons? Check PIN_UP_BUTTON / PIN_DOWN_BUTTON values below...
+#define USE_BUTTONS true
+#define LONG_PRESS_MS 1000      //How much ms you should press button to switch to "long press" mode (tune blinds position)
+#define PIN_UP_BUTTON 22        //Button up pin
+#define PIN_DOWN_BUTTON 23      //Button down pin
+#endif
+
 #define _WIFIMGR_LOGLEVEL_ 4
 #define USE_AVAILABLE_PAGES true
 
@@ -11,10 +18,14 @@
 #include "index_html.h"
 #include <string>
 
+#ifdef USE_BUTTONS
+#include "Button2.h"
+#endif
+
 //----------------------------------------------------
 
 // Version number for checking if there are new code releases and notifying the user
-String version = "1.4.1-egor";
+String version = "1.4.2";
 
 NidayandHelper helper = NidayandHelper();
 
@@ -68,6 +79,11 @@ int maxPosition3 = 100000;
 boolean loadDataSuccess = false;
 boolean saveItNow = false;          //If true will store positions to filesystem
 boolean initLoop = true;            //To enable actions first time the loop is run
+
+#ifdef USE_BUTTONS
+Button2 buttonUp = Button2(PIN_UP_BUTTON); 
+Button2 buttonDown = Button2(PIN_DOWN_BUTTON);
+#endif
 
 #define M1_1 25
 #define M1_2 26
@@ -422,6 +438,46 @@ void setupOTA() {
   ArduinoOTA.begin();
 }
 
+#ifdef USE_BUTTONS
+void onPressHandler(Button2& btn) {
+    Serial.println("onPressHandler");
+    if (btn == buttonUp) {
+      Serial.println("Up button clicked");
+      processMsg("auto", "0", 1, 0);
+      processMsg("auto", "0", 2, 0);
+      processMsg("auto", "0", 3, 0);
+    } else if (btn == buttonDown) {
+      Serial.println("Down button clicked");
+      processMsg("auto", "100", 1, 0);
+      processMsg("auto", "100", 2, 0);
+      processMsg("auto", "100", 3, 0);
+    }
+}
+
+void onReleaseHandler(Button2& btn) {
+    Serial.print("onReleaseHandler. Button released after (ms): ");
+    Serial.println(btn.wasPressedFor());
+    if (btn.wasPressedFor() > LONG_PRESS_MS) {
+      processMsg("manual", "STOP", 1, 0);
+      processMsg("manual", "STOP", 2, 0);
+      processMsg("manual", "STOP", 3, 0);
+    }
+}
+
+void setupButtons() {
+  buttonUp.setPressedHandler(onPressHandler);
+  buttonDown.setPressedHandler(onPressHandler);
+
+  buttonUp.setReleasedHandler(onReleaseHandler);
+  buttonDown.setReleasedHandler(onReleaseHandler);
+}
+
+void processButtons() {
+  buttonUp.loop();
+  buttonDown.loop();
+}
+#endif
+
 void setup(void) {
   Serial.begin(115200);
   delay(100);
@@ -450,6 +506,10 @@ void setup(void) {
   action1 = "";
   action2 = "";
   action3 = "";
+
+#ifdef USE_BUTTONS
+  setupButtons();
+#endif
 
   //Set MQTT properties
   outputTopic = helper.mqtt_gettopic("out");
@@ -594,6 +654,9 @@ void loop(void)
   ESP.wdtFeed();
 #endif
 
+#ifdef USE_BUTTONS  
+  processButtons();
+#endif
 
   /**
     Serving the webpage
@@ -691,7 +754,7 @@ void loop(void)
   if (action1 != "" || action2 != "" || action3 != "") {
     // Running mode
     long now = millis();
-    if (now - lastPublish > 1000) {
+    if (now - lastPublish > 3000) {
       lastPublish = now;
       sendmsg(outputTopic);
     }
