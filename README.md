@@ -9,6 +9,9 @@
 - 2-3 pins for steppers are not reversed now. Please check that initilization of steppers is ok for you (near 86 line: Stepper1(D1, D2, D3, D4))
 
 # Latest changes:
+## 1.4.2 (29 April 2021)
+  - Added support for Up / Down mechanical buttons (long press to tune position). Default pins are 22/23 (initialized with INPUT_PULLUP and activated with GND).  You can disable that feature with "USE_BUTTONS" macro.
+
 ## 1.4.1 (14 March 2021)
   - improve MQTT connection reliability. While MQTT hub is unavailable, controller will try to reconnect once per 60 seconds. In this time web interface will be still available.
   - fix update notifications and links.
