@@ -12,7 +12,11 @@ boolean NidayandHelper::loadconfig(){
   // if (SPIFFS.remove(this->_configfile)) {
   //   Serial.println("Config deleted");
   // }
+#ifdef ESP32
   File configFile = SPIFFS.open(this->_configfile, "r");
+#else
+  File configFile = LittleFS.open(this->_configfile, "r");
+#endif
   if (!configFile) {
     Serial.println("Failed to open config file");
     return false;
@@ -46,7 +50,11 @@ JsonVariant NidayandHelper::getconfig(){
 }
 
 boolean NidayandHelper::saveconfig(JsonVariant json){
+#ifdef ESP32
   File configFile = SPIFFS.open(this->_configfile, "w");
+#else
+  File configFile = LittleFS.open(this->_configfile, "w");
+#endif
   if (!configFile) {
     Serial.println("Failed to open config file for writing");
     return false;
@@ -54,7 +62,7 @@ boolean NidayandHelper::saveconfig(JsonVariant json){
 
   json.printTo(configFile);
 
-  Serial.println("Saved JSON to SPIFFS");
+  Serial.println("Saved JSON to the config file");
   json.printTo(Serial);
   Serial.println();
   return true;
