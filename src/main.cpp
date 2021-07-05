@@ -1,9 +1,4 @@
-#ifndef USE_BUTTONS             //use mechanical up/down buttons? Check PIN_UP_BUTTON / PIN_DOWN_BUTTON values below...
-#define USE_BUTTONS true
 #define LONG_PRESS_MS 1000      //How much ms you should press button to switch to "long press" mode (tune blinds position)
-#define PIN_UP_BUTTON 22        //Button up pin
-#define PIN_DOWN_BUTTON 23      //Button down pin
-#endif
 
 #define _WIFIMGR_LOGLEVEL_ 4
 #define USE_AVAILABLE_PAGES true
@@ -15,12 +10,9 @@
 #include <WebSocketsServer.h>
 #include <ArduinoOTA.h>
 #include "NidayandHelper.h"
+#include "ButtonsHelper.h"
 #include "index_html.h"
 #include <string>
-
-#ifdef USE_BUTTONS
-#include "Button2.h"
-#endif
 
 //----------------------------------------------------
 
@@ -28,6 +20,7 @@
 String version = "1.4.2";
 
 NidayandHelper helper = NidayandHelper();
+ButtonsHelper buttonsHelper = ButtonsHelper();
 
 //Fixed settings for WIFI
 WiFiClient espClient;
@@ -79,11 +72,6 @@ int maxPosition3 = 100000;
 boolean loadDataSuccess = false;
 boolean saveItNow = false;          //If true will store positions to filesystem
 boolean initLoop = true;            //To enable actions first time the loop is run
-
-#ifdef USE_BUTTONS
-Button2 buttonUp = Button2(PIN_UP_BUTTON); 
-Button2 buttonDown = Button2(PIN_DOWN_BUTTON);
-#endif
 
 #define M1_1 25
 #define M1_2 26
@@ -438,15 +426,14 @@ void setupOTA() {
   ArduinoOTA.begin();
 }
 
-#ifdef USE_BUTTONS
 void onPressHandler(Button2& btn) {
     Serial.println("onPressHandler");
-    if (btn == buttonUp) {
+    if (btn == buttonsHelper.buttonUp) {
       Serial.println("Up button clicked");
       processMsg("auto", "0", 1, 0);
       processMsg("auto", "0", 2, 0);
       processMsg("auto", "0", 3, 0);
-    } else if (btn == buttonDown) {
+    } else if (btn == buttonsHelper.buttonDown) {
       Serial.println("Down button clicked");
       processMsg("auto", "100", 1, 0);
       processMsg("auto", "100", 2, 0);
@@ -463,20 +450,6 @@ void onReleaseHandler(Button2& btn) {
       processMsg("manual", "STOP", 3, 0);
     }
 }
-
-void setupButtons() {
-  buttonUp.setPressedHandler(onPressHandler);
-  buttonDown.setPressedHandler(onPressHandler);
-
-  buttonUp.setReleasedHandler(onReleaseHandler);
-  buttonDown.setReleasedHandler(onReleaseHandler);
-}
-
-void processButtons() {
-  buttonUp.loop();
-  buttonDown.loop();
-}
-#endif
 
 void setup(void) {
   Serial.begin(115200);
@@ -507,10 +480,6 @@ void setup(void) {
   action2 = "";
   action3 = "";
 
-#ifdef USE_BUTTONS
-  setupButtons();
-#endif
-
   //Set MQTT properties
   outputTopic = helper.mqtt_gettopic("out");
   inputTopic1 = helper.mqtt_gettopic("in1");
@@ -526,7 +495,11 @@ void setup(void) {
 
   //Define customer parameters for WIFI Manager
   Serial.println("Configuring WiFi-manager parameters...");
-  
+
+  buttonsHelper.useButtons = WiFiSettings.checkbox("Use buttons Up / Down", true);
+  buttonsHelper.pinButtonUp = WiFiSettings.integer("'Up' button pin", 0, 32, 22);
+  buttonsHelper.pinButtonDown = WiFiSettings.integer("'Down' button pin", 0, 32, 23);
+
   deviceHostname = WiFiSettings.string("Name", 40, "");
   mqttServer = WiFiSettings.string("MQTT server", 40);
   mqttPort = WiFiSettings.integer("MQTT port", 0, 65535, 1883);
@@ -543,6 +516,15 @@ void setup(void) {
   WiFiSettings.onPortalWaitLoop = []() {
         ArduinoOTA.handle();
   };
+  WiFiSettings.onSuccess = []() {
+      buttonsHelper.setupButtons();
+
+      buttonsHelper.buttonUp.setPressedHandler(onPressHandler);
+      buttonsHelper.buttonDown.setPressedHandler(onPressHandler);
+      buttonsHelper.buttonUp.setReleasedHandler(onReleaseHandler);
+      buttonsHelper.buttonDown.setReleasedHandler(onReleaseHandler);
+  };
+
   WiFiSettings.connect();
 
   /*
@@ -654,9 +636,9 @@ void loop(void)
   ESP.wdtFeed();
 #endif
 
-#ifdef USE_BUTTONS  
-  processButtons();
-#endif
+  if (buttonsHelper.useButtons) {
+      buttonsHelper.processButtons();
+  }
 
   /**
     Serving the webpage
