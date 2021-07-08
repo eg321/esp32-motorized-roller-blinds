@@ -11,6 +11,7 @@ public:
     uint8_t pinButtonDown;
 
     void setupButtons();
+
     void processButtons();
 };
 
