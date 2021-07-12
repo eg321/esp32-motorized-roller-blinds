@@ -283,16 +283,25 @@ void setupOTA() {
 
 void onPressHandler(Button2 &btn) {
     Serial.println("onPressHandler");
+    String newValue;
+
     if (btn == buttonsHelper.buttonUp) {
         Serial.println("Up button clicked");
-        processCommand("auto", "0", 1, 0);
-        processCommand("auto", "0", 2, 0);
-        processCommand("auto", "0", 3, 0);
+        newValue = "0";
     } else if (btn == buttonsHelper.buttonDown) {
         Serial.println("Down button clicked");
-        processCommand("auto", "100", 1, 0);
-        processCommand("auto", "100", 2, 0);
-        processCommand("auto", "100", 3, 0);
+        newValue = "100";
+    }
+
+    uint8_t num = 0;
+    for (StepperHelper &stepperHelper : stepperHelpers) {
+        num++;
+        if (stepperHelper.isConnected()) {
+            if ((stepperHelper.route == -1 && newValue == "0") || (stepperHelper.route == 1 && newValue == "100")) {
+                newValue = "STOP"; // Another click to the same direction will cause stop of steppers
+            }
+            processCommand("auto", newValue, num, BUTTONS_CLIENT_ID);
+        }
     }
 }
 
@@ -300,9 +309,13 @@ void onReleaseHandler(Button2 &btn) {
     Serial.print("onReleaseHandler. Button released after (ms): ");
     Serial.println(btn.wasPressedFor());
     if (btn.wasPressedFor() > LONG_PRESS_MS) {
-        processCommand("manual", "STOP", 1, 0);
-        processCommand("manual", "STOP", 2, 0);
-        processCommand("manual", "STOP", 3, 0);
+        uint8_t num = 0;
+        for (StepperHelper &stepperHelper : stepperHelpers) {
+            num++;
+            if (stepperHelper.isConnected()) {
+                processCommand("manual", "STOP", num, BUTTONS_CLIENT_ID);
+            }
+        }
     }
 }
 
