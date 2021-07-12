@@ -97,8 +97,10 @@ void sendUpdate() {
     for (StepperHelper &stepperHelper : stepperHelpers) {
         num++;
         if (stepperHelper.isConnected()) {
-            stepperHelper.set = (stepperHelper.targetPosition * 100) / stepperHelper.maxPosition;
-            stepperHelper.pos = (stepperHelper.currentPosition * 100) / stepperHelper.maxPosition;
+            if (stepperHelper.maxPosition != 0) {
+                stepperHelper.set = (stepperHelper.targetPosition * 100) / stepperHelper.maxPosition;
+                stepperHelper.pos = (stepperHelper.currentPosition * 100) / stepperHelper.maxPosition;
+            }
             root["set" + String(num)] = stepperHelper.set;
             root["position" + String(num)] = stepperHelper.pos;
 
@@ -157,7 +159,7 @@ void processCommand(const String& command, const String& value, int stepperNum, 
         stepperHelper->route = 0;
         stepperHelper->action = "manual";
         saveItNow = true;
-    } else if ((command == "manual" && value == "0") || value == "STOP") { // STOP!
+    } else if (command == "stop") { // STOP!
         stepperHelper->route = 0;
         stepperHelper->action = "";
         saveItNow = true;
@@ -171,22 +173,21 @@ void processCommand(const String& command, const String& value, int stepperNum, 
         /*
            Any other message will take the blind to a position
            Incoming value = 0-100
-           route is now the position
         */
         Serial.println("New position command: " + value + "%");
 
-        stepperHelper->route = stepperHelper->maxPosition * value.toInt() / 100;
-        stepperHelper->targetPosition = stepperHelper->route; //Copy route for responding to updates
+        stepperHelper->targetPosition = stepperHelper->maxPosition * value.toInt() / 100;
+        stepperHelper->route = stepperHelper->currentPosition < stepperHelper->targetPosition ? 1 : -1;
         stepperHelper->action = "auto";
 
-        stepperHelper->set = (stepperHelper->targetPosition * 100) / stepperHelper->maxPosition;
+        stepperHelper->set = value.toInt();
         stepperHelper->pos = (stepperHelper->currentPosition * 100) / stepperHelper->maxPosition;
 
         Serial.printf("Starting movement of Stepper %i (current position = %i, targetPosition = %i)...\r\n",
                       stepperNum,
                       stepperHelper->currentPosition,
                       stepperHelper->targetPosition);
-        stepperHelper->getStepper()->newMove(stepperHelper->currentPosition < stepperHelper->targetPosition,
+        stepperHelper->getStepper()->newMove(stepperHelper->route == 1,
                                             abs(stepperHelper->currentPosition - stepperHelper->targetPosition));
 
         //Send the instruction to all connected devices
@@ -298,9 +299,11 @@ void onPressHandler(Button2 &btn) {
         num++;
         if (stepperHelper.isConnected()) {
             if ((stepperHelper.route == -1 && newValue == "0") || (stepperHelper.route == 1 && newValue == "100")) {
-                newValue = "STOP"; // Another click to the same direction will cause stop of steppers
+                // Another click to the same direction will cause stopping
+                processCommand("stop", "", num, BUTTONS_CLIENT_ID);
+            } else {
+                processCommand("auto", newValue, num, BUTTONS_CLIENT_ID);
             }
-            processCommand("auto", newValue, num, BUTTONS_CLIENT_ID);
         }
     }
 }
@@ -313,7 +316,7 @@ void onReleaseHandler(Button2 &btn) {
         for (StepperHelper &stepperHelper : stepperHelpers) {
             num++;
             if (stepperHelper.isConnected()) {
-                processCommand("manual", "STOP", num, BUTTONS_CLIENT_ID);
+                processCommand("stop", "", num, BUTTONS_CLIENT_ID);
             }
         }
     }
@@ -366,7 +369,7 @@ void setup(void) {
 
     steppersRPM = WiFiSettings.integer("Steppers speed (RPM)", 30);
     for (int i = 0; i < MAX_STEPPERS_COUNT; i++) {
-        stepperHelpers[i].pinsStr = WiFiSettings.string("Stepper " + String(i + 1) + " pins (comma-separated, if connected)");
+        stepperHelpers[i].pinsStr = WiFiSettings.string("Stepper " + String(i + 1) + " pins (if connected)");
     }
 
     deviceHostname = WiFiSettings.string("Name", 40, "");

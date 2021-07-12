@@ -108,7 +108,7 @@ String INDEX_HTML = R"(<!DOCTYPE html>
 
           $('#arrow-up-man' + stepperNum).on('click', function(){doSend('{"num": ' + stepperNum + ', "action": "manual", "value": -1}')});
           $('#arrow-down-man' + stepperNum).on('click', function(){doSend('{"num": ' + stepperNum + ', "action": "manual", "value": 1}')});
-          $('#arrow-stop-man' + stepperNum).on('click', function(){doSend('{"num": ' + stepperNum + ', "action": "manual", "value": 0}')});
+          $('#arrow-stop-man' + stepperNum).on('click', function(){doSend('{"num": ' + stepperNum + ', "action": "stop", "value": 0}')});
           $('#set-start' + stepperNum).on('click', function(){doSend('{"num": ' + stepperNum + ', "action": "start", "value":0}')});
           $('#set-max' + stepperNum).on('click', function(){doSend('{"num": ' + stepperNum + ', "action": "max", "value": 0}')});
       });
