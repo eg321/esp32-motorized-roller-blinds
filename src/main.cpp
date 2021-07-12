@@ -1,19 +1,24 @@
-#define LONG_PRESS_MS 1000      //How much ms you should press button to switch to "long press" mode (tune blinds position)
-#define MAX_STEPPERS_COUNT 4
-
-#define _WIFIMGR_LOGLEVEL_ 4
-#define USE_AVAILABLE_PAGES true
+#define LONG_PRESS_MS 1000      // How much ms you should hold button to switch to "long press" mode (tune blinds position)
+#define MAX_STEPPERS_COUNT 4    // This limited by available pins usually
+/*
+Usually your home automation can extract needed data from single JSON with info about all steppers.
+These separate updates for specific steppers will additionally stuck all steppers for some milliseconds.
+Do you really want this?
+*/
+#define MQTT_UPDATES_PER_STEPPER false
 
 #include <CheapStepper.h>
 //#include <ESP8266mDNS.h>
-#include <WiFiUdp.h>
+//#include <WiFiUdp.h>
 
 #include <WebSocketsServer.h>
 #include <ArduinoOTA.h>
 #include <ArduinoJson.h>
-#include "NidayandHelper.h"
-#include "ButtonsHelper.h"
-#include "StepperHelper.h"
+#include <WiFiSettings.h>
+#include "Helpers/ConfigHelper.h"
+#include "Helpers/MqttHelper.h"
+#include "Helpers/ButtonsHelper.h"
+#include "Helpers/StepperHelper.h"
 #include "index_html.h"
 #include <string>
 
@@ -22,24 +27,11 @@
 // Version number for checking if there are new code releases and notifying the user
 String version = "2.0";
 
-NidayandHelper helper = NidayandHelper();
+ConfigHelper helper = ConfigHelper();
+MqttHelper mqttHelper = MqttHelper();
 ButtonsHelper buttonsHelper = ButtonsHelper();
 StepperHelper stepperHelpers[MAX_STEPPERS_COUNT];
 
-//Fixed settings for WIFI
-WiFiClient espClient;
-PubSubClient mqttClient(espClient);   //MQTT client
-String mqttServer;           //WIFI config: MQTT server config (optional)
-int mqttPort = 1883;         //WIFI config: MQTT port config (optional)
-String mqttUser;             //WIFI config: MQTT server username (optional)
-String mqttPwd;             //WIFI config: MQTT server password (optional)
-
-String outputTopic;               //MQTT topic for sending messages
-String inputTopic1;                //MQTT topic for listening
-String inputTopic2;
-String inputTopic3;
-boolean isMqttEnabled = true;
-unsigned long mqttLastConnectAttempt = 0;
 String deviceHostname;             //WIFI config: Bonjour name of device
 int steppersRPM;                   //WIFI config
 int state = 0;
@@ -98,11 +90,7 @@ bool saveConfig() {
     return helper.saveconfig(json);
 }
 
-/*
-   Connect to MQTT server and publish a message on the bus.
-   Finally, close down the connection and radio
-*/
-void sendmsg(String topic) {
+void sendUpdate() {
     uint8_t num = 0;
     DynamicJsonBuffer jsonBuffer(200);
     JsonObject& root = jsonBuffer.createObject();
@@ -114,18 +102,21 @@ void sendmsg(String topic) {
             root["set" + String(num)] = stepperHelper.set;
             root["position" + String(num)] = stepperHelper.pos;
 
-            if (isMqttEnabled && mqttClient.connected()) { // Update state of specific this stepper also on MQTT
-                helper.mqtt_publish(mqttClient, helper.mqtt_gettopic("out" + String(num)), String(stepperHelper.pos));
+#if MQTT_UPDATES_PER_STEPPER
+            if (mqttHelper.isMqttEnabled && mqttHelper.getClient().connected()) {
+                mqttHelper.publishMsg(mqttHelper.getTopicPath("out" + String(num)),
+                                    String(stepperHelper.pos));
             }
+#endif
         }
     }
 
-    char jsonOutput[128];
+    char jsonOutput[128]; //@TODO: Calculate capacity for JSON
     root.printTo(jsonOutput);
     Serial.println("Broadcasting JSON:" + String(jsonOutput));
 
-    if (isMqttEnabled && mqttClient.connected()) {
-        helper.mqtt_publish(mqttClient, topic, jsonOutput);
+    if (mqttHelper.isMqttEnabled && mqttHelper.getClient().connected()) {
+        mqttHelper.publishMsg(mqttHelper.outputTopic, jsonOutput);
     }
 
     webSocket.broadcastTXT(jsonOutput);
@@ -133,26 +124,26 @@ void sendmsg(String topic) {
 
 /****************************************************************************************
 */
-void processMsg(String command, String value, int motor_num, uint8_t clientnum) {
+void processCommand(const String& command, const String& value, int stepperNum, uint8_t clientId) {
     if (command == "update") { //Send position details to the newly connected client
-        sendmsg(outputTopic);
+        sendUpdate();
         return;
     } else if (command == "ping") {
         //Do nothing
         return;
     };
 
-    if (!stepperHelpers[motor_num - 1].isConnected()) {
+    if (!stepperHelpers[stepperNum - 1].isConnected()) {
         Serial.printf("Stepper %i is not connected. Ignoring command '%s' from client %i...\r\n",
-                      motor_num,
+                      stepperNum,
                       command.c_str(),
-                      clientnum);
+                      clientId);
         Serial.println();
         return;
     }
-    
-    StepperHelper* stepperHelper = &stepperHelpers[motor_num - 1];
-    
+
+    StepperHelper* stepperHelper = &stepperHelpers[stepperNum - 1];
+
     /*
        Below are actions based on inbound MQTT payload
     */
@@ -192,60 +183,56 @@ void processMsg(String command, String value, int motor_num, uint8_t clientnum) 
         stepperHelper->pos = (stepperHelper->currentPosition * 100) / stepperHelper->maxPosition;
 
         Serial.printf("Starting movement of Stepper %i (current position = %i, targetPosition = %i)...\r\n",
-                      motor_num,
+                      stepperNum,
                       stepperHelper->currentPosition,
                       stepperHelper->targetPosition);
         stepperHelper->getStepper()->newMove(stepperHelper->currentPosition < stepperHelper->targetPosition,
                                             abs(stepperHelper->currentPosition - stepperHelper->targetPosition));
 
         //Send the instruction to all connected devices
-        sendmsg(outputTopic);
+        sendUpdate();
     }
 }
 
-void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length) {
+void processRequest(String &payload, uint8_t client_id = 0) {
+    StaticJsonBuffer<100> jsonBuffer; //@TODO: Check capacity for JSON object
+    JsonObject &root = jsonBuffer.parseObject(payload);
+    if (root.success()) {
+        const int stepperNum = root["num"];
+        String command = root["action"];
+        String value = root["value"];
+        //Send to common MQTT and websocket function
+        processCommand(command, value, stepperNum, client_id);
+    } else {
+        Serial.println("parseObject() failed");
+    }
+}
+
+void webSocketEvent(uint8_t clientId, WStype_t type, uint8_t *payload, size_t length) {
     switch (type) {
         case WStype_CONNECTED:
-            Serial.printf("[client %u] connected...\r\n", num);
+            Serial.printf("[client %u] connected...\r\n", clientId);
             break;
         case WStype_DISCONNECTED:
-            Serial.printf("[client %u] disconnected.\r\n", num);
+            Serial.printf("[client %u] disconnected.\r\n", clientId);
             break;
         case WStype_TEXT:
-            Serial.printf("[client %u] payload: %s\r\n", num, payload);
-
-            String res = (char *) payload;
-
-            StaticJsonBuffer<100> jsonBuffer1;
-            JsonObject &root = jsonBuffer1.parseObject(payload);
-            if (root.success()) {
-                const int motor_id = root["id"];
-                String command = root["action"];
-                String value = root["value"];
-                //Send to common MQTT and websocket function
-                processMsg(command, value, motor_id, num);
-                break;
-            } else {
-                Serial.println("parseObject() failed");
-            }
+            Serial.printf("[client %u] payload: %s\r\n", clientId, payload);
+            String request = (char *) payload;
+            processRequest(request, clientId);
+            break;
     }
 }
 
 void mqttCallback(char *topic, byte *payload, unsigned int length) {
-    Serial.print("Message arrived [");
+    Serial.print("MQTT message received [");
     Serial.print(topic);
     Serial.print("] ");
-    String res = "";
-    for (int i = 0; i < length; i++) {
-        res += String((char) payload[i]);
+    String jsonRequest = "";
+    for (auto i = 0; i < length; i++) {
+        jsonRequest += String((char) payload[i]);
     }
-    String motor_str = topic;
-    int motor_id = motor_str.charAt(motor_str.length() - 1) - 0x30;
-
-    if (res == "update" || res == "ping") {
-        processMsg(res, "", NULL, NULL);
-    } else
-        processMsg("auto", res, motor_id, NULL);
+    processRequest(jsonRequest);
 }
 
 void handleRoot() {
@@ -298,14 +285,14 @@ void onPressHandler(Button2 &btn) {
     Serial.println("onPressHandler");
     if (btn == buttonsHelper.buttonUp) {
         Serial.println("Up button clicked");
-        processMsg("auto", "0", 1, 0);
-        processMsg("auto", "0", 2, 0);
-        processMsg("auto", "0", 3, 0);
+        processCommand("auto", "0", 1, 0);
+        processCommand("auto", "0", 2, 0);
+        processCommand("auto", "0", 3, 0);
     } else if (btn == buttonsHelper.buttonDown) {
         Serial.println("Down button clicked");
-        processMsg("auto", "100", 1, 0);
-        processMsg("auto", "100", 2, 0);
-        processMsg("auto", "100", 3, 0);
+        processCommand("auto", "100", 1, 0);
+        processCommand("auto", "100", 2, 0);
+        processCommand("auto", "100", 3, 0);
     }
 }
 
@@ -313,9 +300,9 @@ void onReleaseHandler(Button2 &btn) {
     Serial.print("onReleaseHandler. Button released after (ms): ");
     Serial.println(btn.wasPressedFor());
     if (btn.wasPressedFor() > LONG_PRESS_MS) {
-        processMsg("manual", "STOP", 1, 0);
-        processMsg("manual", "STOP", 2, 0);
-        processMsg("manual", "STOP", 3, 0);
+        processCommand("manual", "STOP", 1, 0);
+        processCommand("manual", "STOP", 2, 0);
+        processCommand("manual", "STOP", 3, 0);
     }
 }
 
@@ -350,12 +337,6 @@ void setup(void) {
         }
     }
 
-    //Set MQTT properties
-    outputTopic = helper.mqtt_gettopic("out");
-    inputTopic1 = helper.mqtt_gettopic("in1");
-    inputTopic2 = helper.mqtt_gettopic("in2");
-    inputTopic3 = helper.mqtt_gettopic("in3");
-
     //Set the WIFI hostname
 #ifdef ESP32
     WiFi.setHostname(deviceHostname.c_str());
@@ -372,14 +353,14 @@ void setup(void) {
 
     steppersRPM = WiFiSettings.integer("Steppers speed (RPM)", 30);
     for (int i = 0; i < MAX_STEPPERS_COUNT; i++) {
-        stepperHelpers[i].pinsStr = WiFiSettings.string("Stepper " + String(i) + " pins (if connected)");
+        stepperHelpers[i].pinsStr = WiFiSettings.string("Stepper " + String(i + 1) + " pins (comma-separated, if connected)");
     }
 
     deviceHostname = WiFiSettings.string("Name", 40, "");
-    mqttServer = WiFiSettings.string("MQTT server", 40);
-    mqttPort = WiFiSettings.integer("MQTT port", 0, 65535, 1883);
-    mqttUser = WiFiSettings.string("MQTT username", 40);
-    mqttPwd = WiFiSettings.string("MQTT password", 40);
+    mqttHelper.mqttServer = WiFiSettings.string("MQTT server", 40);
+    mqttHelper.mqttPort = WiFiSettings.integer("MQTT port", 0, 65535, 1883);
+    mqttHelper.mqttUser = WiFiSettings.string("MQTT username", 40);
+    mqttHelper.mqttPwd = WiFiSettings.string("MQTT password", 40);
 
     //reset settings - for testing
     //clean FS, for testing
@@ -398,6 +379,8 @@ void setup(void) {
         buttonsHelper.buttonDown.setPressedHandler(onPressHandler);
         buttonsHelper.buttonUp.setReleasedHandler(onReleaseHandler);
         buttonsHelper.buttonDown.setReleasedHandler(onReleaseHandler);
+
+        mqttHelper.reconnect();
     };
 
     WiFiSettings.connect();
@@ -427,7 +410,7 @@ void setup(void) {
     //     delay(1000);
     //   }
     // }
-    Serial.print("Connect to http://" + String(deviceHostname) + ".local or http://");
+    Serial.print("Connect to http://");
     Serial.println(WiFi.localIP());
 
     //Start HTTP server
@@ -439,18 +422,6 @@ void setup(void) {
     //Start websocket
     webSocket.begin();
     webSocket.onEvent(webSocketEvent);
-
-    /* Setup connection for MQTT and for subscribed
-      messages IF a server address has been entered
-    */
-    if (String(mqttServer) != "") {
-        Serial.println("Registering MQTT server");
-        mqttClient.setServer(mqttServer.c_str(), mqttPort);
-        mqttClient.setCallback(mqttCallback);
-    } else {
-        isMqttEnabled = false;
-        Serial.println("NOTE: No MQTT server address has been registered. Only using websockets");
-    }
 
     setupOTA();
 
@@ -464,6 +435,8 @@ void setup(void) {
             stepperHelper.getStepper()->setRpm(steppersRPM);
         }
     }
+
+    mqttHelper.setup(mqttCallback);
 
     //Update webpage
     INDEX_HTML.replace("{VERSION}", "v" + version);
@@ -510,22 +483,7 @@ void loop(void) {
     */
     server.handleClient();
 
-    //MQTT client
-    if (isMqttEnabled) {
-        if (mqttClient.connected()) {
-            mqttClient.loop();
-        } else {
-            unsigned long now = millis();
-            if (now - mqttLastConnectAttempt > 60000) { //once per 60 sec
-                mqttLastConnectAttempt = now;
-                // Attempt to reconnect
-                if (helper.mqtt_reconnect(mqttClient, mqttUser, mqttPwd,
-                                          {inputTopic1.c_str(), inputTopic2.c_str(), inputTopic3.c_str()})) {
-                    mqttLastConnectAttempt = 0;
-                }
-            }
-        }
-    }
+    mqttHelper.loop();
 
     /**
       Storing positioning data and turns off the power to the coils
@@ -541,7 +499,7 @@ void loop(void) {
       Manage actions. Steering of the blind
     */
     uint8_t num = 0;
-    bool sendUpdate = false;
+    bool isTimeToSendUpdate = false;
     for (StepperHelper &stepperHelper : stepperHelpers) {
         num++;
         if (!stepperHelper.isConnected()) {
@@ -555,10 +513,10 @@ void loop(void) {
                 stepperHelper.action = "";
                 stepperHelper.set = (stepperHelper.targetPosition * 100) / stepperHelper.maxPosition;
                 stepperHelper.pos = (stepperHelper.currentPosition * 100) / stepperHelper.maxPosition;
-                sendmsg(outputTopic);
+                sendUpdate();
                 Serial.printf("Stepper %i has reached target position.\r\n", num);
                 saveItNow = true;
-                sendUpdate = true;
+                isTimeToSendUpdate = true;
             }
         } else if (stepperHelper.action == "manual" && stepperHelper.route != 0) {
             stepperHelper.getStepper()->move(stepperHelper.route > 0, abs(stepperHelper.route));
@@ -566,15 +524,15 @@ void loop(void) {
         }
 
         if (stepperHelper.action != "") {
-            sendUpdate = true;
+            isTimeToSendUpdate = true;
         }
     }
 
-    if (sendUpdate) {
+    if (isTimeToSendUpdate) {
         long now = millis();
         if (now - lastPublish > 3000) { // Update state
             lastPublish = now;
-            sendmsg(outputTopic);
+            sendUpdate();
         }
     }
 

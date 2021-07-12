@@ -102,15 +102,15 @@ String INDEX_HTML = R"(<!DOCTYPE html>
       }
 
       connectedSteppers.forEach(function(stepperNum) {
-          $('#arrow-close' + stepperNum).on('click', function(){$('#setrange' + stepperNum).val(100);doSend('{"id": ' + stepperNum + ', "action": "auto", "value": 100}');});
-          $('#arrow-open' + stepperNum).on('click', function(){$('#setrange' + stepperNum).val(0);doSend('{"id": ' + stepperNum + ', "action": "auto", "value": 0}');});
-          $('#setrange' + stepperNum).on('change', function(){doSend('{"id": ' + stepperNum + ', "action": "auto", "value": ' + $('#setrange' + stepperNum).val() + '}')});
+          $('#arrow-close' + stepperNum).on('click', function(){$('#setrange' + stepperNum).val(100);doSend('{"num": ' + stepperNum + ', "action": "auto", "value": 100}');});
+          $('#arrow-open' + stepperNum).on('click', function(){$('#setrange' + stepperNum).val(0);doSend('{"num": ' + stepperNum + ', "action": "auto", "value": 0}');});
+          $('#setrange' + stepperNum).on('change', function(){doSend('{"num": ' + stepperNum + ', "action": "auto", "value": ' + $('#setrange' + stepperNum).val() + '}')});
 
-          $('#arrow-up-man' + stepperNum).on('click', function(){doSend('{"id": ' + stepperNum + ', "action": "manual", "value": -1}')});
-          $('#arrow-down-man' + stepperNum).on('click', function(){doSend('{"id": ' + stepperNum + ', "action": "manual", "value": 1}')});
-          $('#arrow-stop-man' + stepperNum).on('click', function(){doSend('{"id": ' + stepperNum + ', "action": "manual", "value": 0}')});
-          $('#set-start' + stepperNum).on('click', function(){doSend('{"id": ' + stepperNum + ', "action": "start", "value":0}')});
-          $('#set-max' + stepperNum).on('click', function(){doSend('{"id": ' + stepperNum + ', "action": "max", "value": 0}')});
+          $('#arrow-up-man' + stepperNum).on('click', function(){doSend('{"num": ' + stepperNum + ', "action": "manual", "value": -1}')});
+          $('#arrow-down-man' + stepperNum).on('click', function(){doSend('{"num": ' + stepperNum + ', "action": "manual", "value": 1}')});
+          $('#arrow-stop-man' + stepperNum).on('click', function(){doSend('{"num": ' + stepperNum + ', "action": "manual", "value": 0}')});
+          $('#set-start' + stepperNum).on('click', function(){doSend('{"num": ' + stepperNum + ', "action": "start", "value":0}')});
+          $('#set-max' + stepperNum).on('click', function(){doSend('{"num": ' + stepperNum + ', "action": "max", "value": 0}')});
       });
 
     }, 200);
