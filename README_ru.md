@@ -42,6 +42,12 @@
 
 <img src="https://user-images.githubusercontent.com/10514429/127761394-7f7a63c1-fb19-48bf-a2b4-b94497d89f7c.png" width=60%>
 
+## Captive Portal
+После соединения с сетью "esp-xxxx" автоматически откроется Captive Portal:
+
+<img src="https://user-images.githubusercontent.com/10514429/127766193-c0b373a9-cd20-4383-8369-19cf8c513293.png" width=30%>
+
+Настройте тут пины для нужных двигателей и для механических кнопок Вверх/вниз (или выключите, если не используется).
 
 ## MQTT
 *Если не хотите использовать MQTT, просто не вводите адрес MQTT сервера при конфигурации в Captive Portal.*
