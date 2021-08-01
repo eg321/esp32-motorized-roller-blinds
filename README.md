@@ -1,93 +1,123 @@
-3d parts for printing are available id `3d_parts` folder. Available from Thingiverse also: https://www.thingiverse.com/thing:4093205/
+*Russian version available [here](README_ru.md)*.
 
-# Fork changes
-- project ported to Platformio
-- changed 3d parts according to small tube ~16mm
-- added functionality of 3 step motors
-- add current state broadcasting during blinds moving
-- add wipe setting function
-- 2-3 pins for steppers are not reversed now. Please check that initilization of steppers is ok for you (near 86 line: Stepper1(D1, D2, D3, D4))
+Hi there!
 
-# Latest changes:
-## 1.4.2 (29 April 2021)
-  - Added support for Up / Down mechanical buttons (long press to tune position). Default pins are 22/23 (initialized with INPUT_PULLUP and activated with GND).  You can disable that feature with "USE_BUTTONS" macro.
+This project aims at controlling of motorized blinds, and it's integration into home automation systems like [Home Assistant](https://www.home-assistant.io/) and [OpenHab](https://www.openhab.org/). 
 
-## 1.4.1 (14 March 2021)
-  - improve MQTT connection reliability. While MQTT hub is unavailable, controller will try to reconnect once per 60 seconds. In this time web interface will be still available.
-  - fix update notifications and links.
+The project developing in 2 areas:
+1. Software part (firmware for boards based at ESP8266 / ESP32 modules)
+2. Mechanical part (3d printing models to convert your blinds into motorized one).
 
-## 1.4.0 (15 September 2020)
- - Support of ESP32 (ESP8266 should work too). It makes possible to easily connect up to 3 steppers with 4-pins connectors.
- - Switched to "CheapStepper" library. It allows to configure rotation speed (grep for "setRpm(30)" lines - maybe you'll need to adapt it for your motors).
- - Code was adapted for asynchronous control of steppers. Your steppers can work in parallel without loosing speed now.
- - Switched to another Wi-Fi library. In general it works like previous "WiFi manager", but supports ESP32 also.
- - Added "STOP" command for OpenHab compatibility. See OpenHab config example below.
- - HomeAssistant support. There are separate MQTT topics for blinds position now (out1, out2, out3). See HomeAssistant config example below.
- 
-## Non-backward compatible changes:
- - mDNS is not supported now, because used library is not compatible with ESP32. 
+A bit details below...
+
+# ESP8266 / ESP32 firmware
+I'm trying to keep compatibility with both platforms.
+Main differences between them:
+- There is fewer pins available at ESP8266. You can connect 2 steppers to single controller only (using 8 pins).  
+- ESP32 can connect up to 4 steppers (or even more?) to single controller (using 16 pins).
+
+If you would to connect 1 or 2 steppers only, use cheaper ESP8266 based controller (like Wemos D1 mini, NodeMCU, etc).
+
+## Features
+- Support for cheap 28BYJ-48 steppers (better to use 12 volt versions)
+- Control of an unlimited number of steppers (limitation in 4 motors is the default for a more convenient UI). In fact, it's limited by hardware only (by the number of pins).
+- Ability to set the rotation speed (12 volt motors can provide a higher speed)
+- Ability to set all main settings through  Captive WiFi Portal (steppers used, pins, rotation speed, MQTT settings, etc.)
+- Web interface for setting endpoints and controlling blinds (adapted for mobile devices also)
+- Possibility of connecting an external mechanical switch (with the ability to stop the curtains in the desired position).
+- MQTT support (both for controlling curtains and for setting end positions - can be complete replacement for Web UI)
+- Easy integration with popular home automation systems like [Home Assistant](https://www.home-assistant.io/) or [OpenHab](https://www.openhab.org/) (via MQTT)
+- Over the air (OTA) updates. No need to disconnect or disassemble the controller to update the firmware. The web interface notifies about the availability of new updates.
+- Saving the position of each blind in the ROM (you do not need to re-calibrate or set the position after turning off the power)
+- Control of all connected motors in parallel (asynchronous operation with steppers)
+- Watchdog (automatic restart of the controller in case of freezing)
+- Automatic MQTT re-connection in case of network problems
+- Low power consumption when idle (stepper windings are switched-off when idle)
+- DHCP over WiFi support
+
+## Web-interface
+Control blinds:
+
+<img src="https://user-images.githubusercontent.com/10514429/127761354-48f777a2-bae6-4e8f-9864-e677d7ff6fbc.png" width=60%>
+
+Set end-points:
+
+<img src="https://user-images.githubusercontent.com/10514429/127761394-7f7a63c1-fb19-48bf-a2b4-b94497d89f7c.png" width=60%>
 
 
-# Features
- 1. A tiny webserver is setup on the esp8266 that will serve one page to the client
- 2. Upon powering on the first time WIFI credentials, a hostname and - optional - MQTT server details is to be configured. You can specify if you want **clockwise (CW) rotation** to close the blind and you can also specify **MQTT authentication** if required. Connect your computer to a new WIFI hotspot named **esp-xxxxx**.
- 3. Connect to your normal WIFI with your client and go to the IP address of the device. If you don't know the IP-address of the device check your router for the leases (or check the serial console in the Arduino IDE or check the `/raw/esp8266/register` MQTT message if you are using an MQTT server)
- 4. As the webpage is loaded it will connect through a websocket directly to the device to progress updates and to control the device. If any other client connects the updates will be in sync.
- 5. Go to the Settings page to calibrate the motors with the start and end positions of the roller blind. Follow the instructions on the page
+## MQTT
+*Just do not setup MQTT details at Captive Portal, if you don't want to use MQTT.*
 
-# MQTT
-- When it connects to WIFI and MQTT it will send a "register" message to topic `/raw/esp8266/register` with a payload containing chip-id and IP-address
-- A message to `/raw/esp8266/[chip-id]/in[1-3]` will steer the selected blind according to the "payload actions" below
-- Updates from the device will be sent to topic `/raw/esp8266/[chip-id]/out` as JSON (there are "out1", "out2", "out3" topics to get separate position of specific blinds)
+MQTT details:
+- All controllers send a message to the common topic after successful connection: `ESP_Blinds/register` (in JSON with 2 fields: `chipId` and `ip`)
+- Controller listening for commands at topic `ESP_Blinds/<chip_id>/in` (JSON)
+- Controller send updates with state and positions to `ESP_Blinds/<chip_id>/out` (JSON)
+- Separate topics for steppers (`/outN`) are disabled for MQTT messaging optimization, but you can enable it if needed for your automation flow.
 
-### If you don't want to use MQTT
-Simply do not enter any string in the MQTT server form field upon WIFI configuration of the device (step 3 above)
+## HomeAssistant integration
+*Auto discovery is disabled now due testing issues. Will be enabled in future releases.*
 
-## OpenHab config example
-You can define thing in this way (update "2955439908" with your chip id):
-```
-Thing mqtt:topic:livingroom:rollerblinds "Rollerblinds" (mqtt:broker:mosquitto) @ "Livingroom"
-{
-    Channels:
-        Type rollershutter : rollerblinds1      "Rollerblinds 1"        [ stateTopic="/raw/esp8266/2955439908/out", transformationPattern="JSONPATH:$.position1", commandTopic="/raw/esp8266/2955439908/in1", formatBeforePublish="%d"]
-        Type rollershutter : rollerblinds2      "Rollerblinds 2"        [ stateTopic="/raw/esp8266/2955439908/out", transformationPattern="JSONPATH:$.position2", commandTopic="/raw/esp8266/2955439908/in2", formatBeforePublish="%d"]
-        Type rollershutter : rollerblinds3      "Rollerblinds 3"        [ stateTopic="/raw/esp8266/2955439908/out", transformationPattern="JSONPATH:$.position3", commandTopic="/raw/esp8266/2955439908/in3", formatBeforePublish="%d"]
-}
-```
+<img src="https://user-images.githubusercontent.com/10514429/127761434-6b5441d2-5204-49c0-a82d-9eed0a084a33.png" width=60%>
 
-## HomeAssistant config example
-Most probably I'll add auto-discovery later. Right now you can add blinds in this way (update "2955439908" with your chip id):
-```
+
+Config example for 2 roller blinds (replace "_chip_Id_" with Chip id of your controller, watch it at registration topic - `/ESP_Blinds/register`):
+```yaml
 cover:
   - platform: mqtt
-    name: "Rollerblind 1"
-    command_topic: "/raw/esp8266/2955439908/in1"
-    set_position_topic: "/raw/esp8266/2955439908/in1"
-    position_topic: "/raw/esp8266/2955439908/out1"
-    payload_open: "0"
-    payload_close: "100"
-    payload_stop: "STOP"
+    name: "Blind 1"
+    device_class: "blind"
+    command_topic: "ESP_Blinds/_chip_Id_/in"
+    set_position_topic: "ESP_Blinds/_chip_Id_/in"
+    set_position_template: '{"num": 1, "action": "auto", "value": {{ 100 - position }} }'
+    position_topic: "ESP_Blinds/_chip_Id_/out"
+    position_template: '{{ value_json.position1 }}'
+    payload_open: '{"num": 1, "action": "auto", "value": 0}'
+    payload_close: '{"num": 1, "action": "auto", "value": 100}'
+    payload_stop: '{"num": 1, "action": "stop", "value": 0}'
     position_open: 0
     position_closed: 100
-    value_template: "{{ value | int }}"
+    optimistic: false
+
+  - platform: mqtt
+    name: "Blind 2"
+    device_class: "blind"
+    command_topic: "ESP_Blinds/_chip_Id_/in"
+    set_position_topic: "ESP_Blinds/_chip_Id_/in"
+    set_position_template: '{"num": 2, "action": "auto", "value": {{ 100 - position }} }'
+    position_topic: "ESP_Blinds/_chip_Id_/out"
+    position_template: '{{ value_json.position2 }}'
+    payload_open: '{"num": 2, "action": "auto", "value": 0}'
+    payload_close: '{"num": 2, "action": "auto", "value": 100}'
+    payload_stop: '{"num": 2, "action": "stop", "value": 0}'
+    position_open: 0
+    position_closed: 100
     optimistic: false
 ```
+Use same approach for other your blinds.
 
+# Mechanical part
+The most popular option uses cheap 28BYJ-48 steppers, but in fact you can use any 4-pin stepper motors (dual winding steppers).
+28BYJ-48 is most often used with the ULN2003 driver (better to use 12 volt version, it gives more torque).
 
-## Payload options
-- `update` - send broadcast message about current state via MQTT and websockets
-- `0-100` - (auto mode) A number between 0-100 to set % of opened blind. Requires calibration before use. E.g. `50` will open it to 50%
+I have developed 2 models for converting Leroy Merlin' roller blinds into motorized ones:
+1. for the old models. It looks like they are almost not sold anymore.
+2. for a new (will publish soon). The fixing holes match the original parts, so the curtains can be easily converted to motorized and vice versa.
 
-# Screenshots
+3 printing models are available at `3d_parts` directory or at [Thingiverse](https://www.thingiverse.com/thing:4093205/) directly with some instructions.
 
-## Control
-![Control](https://user-images.githubusercontent.com/25607714/65042413-7933be00-d961-11e9-915c-1af87957b788.jpg)
+# Future plans
+* Complete implementation for  Home Assistant "Auto Discovery"
+* Add support for other steppers and drivers (please propose at "issues")
+* Add more configuration options at WebUI to allow re-configuration without "wipe settings"
+* Prepare universal PCB
+* Any ideas? Fill in the Issues.
 
-## Calibrate
-![Settings](https://user-images.githubusercontent.com/25607714/65042412-7933be00-d961-11e9-898c-ac620290863a.jpg)
+# Project history
+This project appeared as fork of @nidayand [repository](https://github.com/nidayand/motor-on-roller-blind-ws) originally.
 
-## Communication settings
- ![WIFI Manager](https://user-images.githubusercontent.com/2181965/37288794-75244c84-2608-11e8-8c27-a17e1e854761.jpg)
+Unfortunately, the project supported ESP8266 and 1 stepper only, plus it had not been updated for a long time. I added support for Platformio (for easier development), multiple steppers, and ESP32 later (so more than 2 steppers can be connected to single controller). It was published as v1.4.x.
 
-## Sidebar
- ![Sidebar](https://user-images.githubusercontent.com/25607714/65042415-79cc5480-d961-11e9-9ee1-4ca9edb15909.jpg)
+Soon I wanted a more convenient motor control, a simple controller configuration without firmware re-build, but the original code was of little messy to maintain, although it worked.
+As a result, a large refactoring of the firmware took place - new classes and areas of responsibility were allocated.
+
+In fact, it became clear that almost nothing remained of the old project (only the Web UI almost unchanged). This project was detached and now developing on its own tree. 

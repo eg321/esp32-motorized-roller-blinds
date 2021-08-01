@@ -16,7 +16,7 @@ boolean MqttHelper::reconnect() {
 
             //Send register MQTT message with JSON of chipid and ip-address
             publishMsg(prefix + "register",
-                       "{ \"id\": \"" + String(ESP_getChipId()) + "\", \"ip\":\"" + WiFi.localIP().toString() +
+                       "{ \"chipId\": \"" + String(ESP_getChipId()) + "\", \"ip\":\"" + WiFi.localIP().toString() +
                        "\"}");
 
             //HA autodiscovery
