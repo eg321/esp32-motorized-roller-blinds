@@ -44,6 +44,12 @@ Set end-points:
 
 <img src="https://user-images.githubusercontent.com/10514429/127761394-7f7a63c1-fb19-48bf-a2b4-b94497d89f7c.png" width=60%>
 
+## Captive Portal
+You'll be redirected to Captive portal after connecting to "esp-xxxx" WiFi network:
+
+<img src="https://user-images.githubusercontent.com/10514429/127766193-c0b373a9-cd20-4383-8369-19cf8c513293.png" width=30%>
+
+Fill pins for needed Steppers divided by comma and check pins for your mechanical buttons Up/Down (or disable it).
 
 ## MQTT
 *Just do not setup MQTT details at Captive Portal, if you don't want to use MQTT.*
