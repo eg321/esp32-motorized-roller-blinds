@@ -33,6 +33,15 @@
 - Низкое энергопотребление в режиме простоя (обмотки двигателя не держатся под напряжением во время остановки)
 - Поддержка DHCP по WiFi
 
+## Web-интерфейс
+Управление:
+
+<img src="https://user-images.githubusercontent.com/10514429/127761354-48f777a2-bae6-4e8f-9864-e677d7ff6fbc.png" width=60%>
+
+Калибровка крайних позиций:
+
+<img src="https://user-images.githubusercontent.com/10514429/127761394-7f7a63c1-fb19-48bf-a2b4-b94497d89f7c.png" width=60%>
+
 
 ## MQTT
 *Если не хотите использовать MQTT, просто не вводите адрес MQTT сервера при конфигурации в Captive Portal.*
@@ -45,6 +54,9 @@
 
 ## Пример интеграции с HomeAssistant 
 *Auto discovery пока отключено ибо не до конца протестировано. Будет включено в следующих релизах.*
+
+<img src="https://user-images.githubusercontent.com/10514429/127761434-6b5441d2-5204-49c0-a82d-9eed0a084a33.png" width=60%>
+
 
 Пример конфига для интеграции 2х штор в Home Assistant (замените "_chip_Id_" Chip id вашего контроллера - его можно подглядеть в сообщении о регистрации - `/ESP_Blinds/register`):
 ```yaml
