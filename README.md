@@ -2,11 +2,12 @@
 
 Hi there!
 
-This project aims at controlling of motorized blinds, and it's integration into home automation systems like [Home Assistant](https://www.home-assistant.io/) and [OpenHab](https://www.openhab.org/). 
+The project is dedictated to control of motorized blinds’ operation and its integration into home automation systems (f.ex. [Home Assistant](https://www.home-assistant.io/) and [OpenHab](https://www.openhab.org/)).
 
-The project developing in 2 areas:
-1. Software part (firmware for boards based at ESP8266 / ESP32 modules)
-2. Mechanical part (3d printing models to convert your blinds into motorized one).
+The project developing consists of 2 major areas:
+
+- Software (firmware for boards based at ESP8266 / ESP32 modules)
+- Hardware/Mechanical (3d printing models to upgrade your blinds into motorized).
 
 A bit details below...
 
