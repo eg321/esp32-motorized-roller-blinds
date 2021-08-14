@@ -7,6 +7,8 @@ Do you really want this?
 */
 #define MQTT_UPDATES_PER_STEPPER false
 
+#define NUMBER_OF_CLICKS_TO_RESTART 5 //How many clicks of Up/Down button needed to restart controller
+
 #include <CheapStepper.h>
 //#include <ESP8266mDNS.h>
 //#include <WiFiUdp.h>
@@ -25,7 +27,7 @@ Do you really want this?
 //----------------------------------------------------
 
 // Version number for checking if there are new code releases and notifying the user
-String version = "2.0";
+String version = "2.0.1";
 
 ConfigHelper helper = ConfigHelper();
 MqttHelper mqttHelper = MqttHelper();
@@ -285,6 +287,7 @@ void setupOTA() {
 void onPressHandler(Button2 &btn) {
     Serial.println("onPressHandler");
     String newValue;
+    boolean isRestartRequested = false;
 
     if (btn == buttonsHelper.buttonUp) {
         Serial.println("Up button clicked");
@@ -294,17 +297,33 @@ void onPressHandler(Button2 &btn) {
         newValue = "100";
     }
 
+    if (btn.getNumberOfClicks() == NUMBER_OF_CLICKS_TO_RESTART) {
+        Serial.print(btn.getNumberOfClicks());
+        Serial.println(" times clicked.");
+        isRestartRequested = true;
+    }
+
     uint8_t num = 0;
     for (StepperHelper &stepperHelper : stepperHelpers) {
         num++;
         if (stepperHelper.isConnected()) {
-            if ((stepperHelper.route == -1 && newValue == "0") || (stepperHelper.route == 1 && newValue == "100")) {
+            if (isRestartRequested || (stepperHelper.route == -1 && newValue == "0") || (stepperHelper.route == 1 && newValue == "100")) {
                 // Another click to the same direction will cause stopping
                 processCommand("stop", "", num, BUTTONS_CLIENT_ID);
             } else {
                 processCommand("auto", newValue, num, BUTTONS_CLIENT_ID);
             }
         }
+    }
+
+    if (isRestartRequested) {
+        Serial.println("Restarting...");
+        delay(500);
+#ifdef ESP8266
+        ESP.reset();
+#else   //ESP32
+        ESP.restart();
+#endif
     }
 }
 

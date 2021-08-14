@@ -7,6 +7,9 @@ void ButtonsHelper::setupButtons() {
 
     buttonUp = Button2(pinButtonUp);
     buttonDown = Button2(pinButtonDown);
+
+    buttonUp.setDoubleClickTime(500);
+    buttonDown.setDoubleClickTime(500);
 }
 
 void ButtonsHelper::processButtons() {
