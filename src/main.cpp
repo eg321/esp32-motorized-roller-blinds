@@ -415,7 +415,7 @@ void setup(void) {
         buttonsHelper.buttonUp.setReleasedHandler(onReleaseHandler);
         buttonsHelper.buttonDown.setReleasedHandler(onReleaseHandler);
 
-        mqttHelper.reconnect();
+        mqttHelper.loop();
     };
 
     WiFiSettings.connect();
