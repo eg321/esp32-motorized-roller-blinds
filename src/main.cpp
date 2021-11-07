@@ -9,6 +9,8 @@ Do you really want this?
 
 #define NUMBER_OF_CLICKS_TO_RESTART 5 //How many clicks of Up/Down button needed to restart controller
 
+#define WIFI_FAILURE_TIMEOUT 15 * 60 // How many seconds to wait for connection restoration before restart (affects captive portal too)
+
 #include <CheapStepper.h>
 //#include <ESP8266mDNS.h>
 //#include <WiFiUdp.h>
@@ -284,6 +286,17 @@ void setupOTA() {
     ArduinoOTA.begin();
 }
 
+void restartDevice() {
+    Serial.println("Restarting...");
+    delay(500);
+
+#ifdef ESP8266
+    ESP.reset();
+#else   //ESP32
+    ESP.restart();
+#endif
+}
+
 void onPressHandler(Button2 &btn) {
     Serial.println("onPressHandler");
     String newValue;
@@ -317,13 +330,7 @@ void onPressHandler(Button2 &btn) {
     }
 
     if (isRestartRequested) {
-        Serial.println("Restarting...");
-        delay(500);
-#ifdef ESP8266
-        ESP.reset();
-#else   //ESP32
-        ESP.restart();
-#endif
+        restartDevice();
     }
 }
 
@@ -338,6 +345,30 @@ void onReleaseHandler(Button2 &btn) {
                 processCommand("stop", "", num, BUTTONS_CLIENT_ID);
             }
         }
+    }
+}
+
+void checkWiFiConnection() {
+    static unsigned long lastCheckTime = 0;
+    static unsigned int failureTime = 0;
+    unsigned long now = millis();
+
+    if (WiFi.status() != WL_CONNECTED && now > lastCheckTime + (30 * 1000)) {
+        if (failureTime == 0) {
+            Serial.println("WiFi connection failure. Starting timer to restart device...");
+            failureTime = now;
+        }
+
+        Serial.printf("%i seconds until restart.\n", abs((int)(now - failureTime - WIFI_FAILURE_TIMEOUT * 1000) / 1000));
+        if (now > failureTime + WIFI_FAILURE_TIMEOUT * 1000) {
+            Serial.println("Restarting device...");
+            restartDevice();
+        }
+
+        lastCheckTime = now;
+    } else if (failureTime != 0 && WiFi.status() == WL_CONNECTED) {
+        Serial.println("WiFi connection is restored.");
+        failureTime = 0;
     }
 }
 
@@ -406,6 +437,7 @@ void setup(void) {
     };
     WiFiSettings.onPortalWaitLoop = []() {
         ArduinoOTA.handle();
+        checkWiFiConnection();
     };
     WiFiSettings.onSuccess = []() {
         buttonsHelper.setupButtons();
@@ -416,6 +448,9 @@ void setup(void) {
         buttonsHelper.buttonDown.setReleasedHandler(onReleaseHandler);
 
         mqttHelper.loop();
+    };
+    WiFiSettings.onFailure = []() {
+        Serial.println(F("Failure occurred during WiFi connection."));
     };
 
     WiFiSettings.connect();
@@ -519,6 +554,8 @@ void loop(void) {
     server.handleClient();
 
     mqttHelper.loop();
+
+    checkWiFiConnection();
 
     /**
       Storing positioning data and turns off the power to the coils

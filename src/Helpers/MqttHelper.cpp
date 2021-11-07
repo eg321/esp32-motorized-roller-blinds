@@ -8,7 +8,7 @@ boolean MqttHelper::reconnect() {
     }
     if (!getClient().connected()) {
         String clientId = "ESP-Blinds-" + String(ESP_getChipId());
-        Serial.printf("MQTT Login: '%s', pass: '%s'\r\n", mqttUser.c_str(), mqttPwd.c_str());
+        Serial.printf("MQTT connecting (login: '%s', pass: '%s')...\r\n", mqttUser.c_str(), mqttPwd.c_str());
         // Attempt to connect
         if ((isLoginNeeded ? getClient().connect(clientId.c_str(), mqttUser.c_str(), mqttPwd.c_str())
                            : getClient().connect(clientId.c_str()))) {
@@ -31,6 +31,8 @@ boolean MqttHelper::reconnect() {
             }
 
             return true;
+        } else {
+            Serial.println("MQTT connection failure.");
         }
     }
 
@@ -60,7 +62,7 @@ void MqttHelper::setup(MQTT_CALLBACK_SIGNATURE) {
       messages IF a server address has been entered
     */
     if (String(mqttServer) != "") {
-        Serial.println("Registering MQTT server...");
+        Serial.println("Configuring connection to the MQTT server...");
         getClient().setServer(mqttServer.c_str(), mqttPort);
         getClient().setCallback(callback);
         outputTopic = getTopicPath("out");
