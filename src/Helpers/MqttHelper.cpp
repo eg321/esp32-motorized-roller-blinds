@@ -14,11 +14,6 @@ boolean MqttHelper::reconnect() {
                            : getClient().connect(clientId.c_str()))) {
             Serial.println("MQTT connected.");
 
-            //Send register MQTT message with JSON of chipid and ip-address
-            publishMsg(prefix + "/register",
-                       "{ \"chipId\": \"" + String(ESP_getChipId()) + "\", \"ip\":\"" + WiFi.localIP().toString() +
-                       "\"}");
-
             //Setup subscription
             if (!topicsToSubscribe.empty()) {
                 for (const String &topic : topicsToSubscribe) {
@@ -29,6 +24,8 @@ boolean MqttHelper::reconnect() {
 
             if (onConnect) onConnect();
 
+            sendAvailabilityMessage();
+
             return true;
         } else {
             Serial.println("MQTT connection failure.");
@@ -38,15 +35,24 @@ boolean MqttHelper::reconnect() {
     return false;
 }
 
+void MqttHelper::sendAvailabilityMessage() {
+    publishMsg(prefix + "/" + String(ESP_getChipId()) + "/available", "online");
+}
+
 void MqttHelper::loop() {
     if (!isMqttEnabled) {
         return;
     }
+    unsigned long now = millis();
 
     if (getClient().connected()) {
         getClient().loop();
+
+        if (now - lastAvailableMsgTime > AVAILABILITY_MSG_INTERVAL * 1000) {
+            sendAvailabilityMessage();
+            lastAvailableMsgTime = now;
+        }
     } else {
-        unsigned long now = millis();
         if (now - mqttLastConnectAttempt > MQTT_RECONNECT_DELAY) { //Attempt to reconnect once per 30 sec
             mqttLastConnectAttempt = now;
             if (reconnect()) {

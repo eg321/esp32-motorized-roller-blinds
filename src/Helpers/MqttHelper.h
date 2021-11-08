@@ -18,11 +18,13 @@
 #endif
 
 #define MQTT_RECONNECT_DELAY 30000 //Delay in ms between reconnections
+#define AVAILABILITY_MSG_INTERVAL 300 //seconds between availability messages
 
 class MqttHelper {
 private:
     unsigned long mqttLastConnectAttempt = 0;
     PubSubClient* client = nullptr;
+    unsigned long lastAvailableMsgTime = 0;
 
 public:
     typedef std::function<void(void)> TCallback;
@@ -53,6 +55,7 @@ public:
 
     String prefix = "ESP_Blinds";
 
+    void sendAvailabilityMessage();
 };
 
 #endif //ESP32_MOTORIZED_ROLLER_BLINDS_MQTTHELPER_H

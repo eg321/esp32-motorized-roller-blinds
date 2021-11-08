@@ -392,6 +392,7 @@ void sendHADiscovery() {
                 "\"name\":\"Rollerblind " + String(num) + "\",\n"
                 "\"uniq_id\":\"" + String(chipId) + "_" + String(num) + "\","
                 "\"dev_cla\":\"blind\","
+                "\"avty_t\":\"~/available\","
                 "\"cmd_t\":\"~/in\","
                 "\"set_pos_t\":\"~/in\","
                 "\"set_pos_tpl\":\"{\\\"num\\\": " + String(num) + ", \\\"action\\\": \\\"auto\\\", \\\"value\\\": {{ 100 - position }} }\",\n"
