@@ -15,12 +15,9 @@ boolean MqttHelper::reconnect() {
             Serial.println("MQTT connected.");
 
             //Send register MQTT message with JSON of chipid and ip-address
-            publishMsg(prefix + "register",
+            publishMsg(prefix + "/register",
                        "{ \"chipId\": \"" + String(ESP_getChipId()) + "\", \"ip\":\"" + WiFi.localIP().toString() +
                        "\"}");
-
-            //HA autodiscovery
-            sendHAAutoDiscovery();
 
             //Setup subscription
             if (!topicsToSubscribe.empty()) {
@@ -29,6 +26,8 @@ boolean MqttHelper::reconnect() {
                     Serial.println("Subscribed to " + topic);
                 }
             }
+
+            if (onConnect) onConnect();
 
             return true;
         } else {
@@ -76,13 +75,14 @@ void MqttHelper::setup(MQTT_CALLBACK_SIGNATURE) {
 PubSubClient &MqttHelper::getClient() {
     if (client == nullptr) {
         client = new PubSubClient(espClient);
+        client->setBufferSize(1024); // increased size needed for HA Autodiscovery packets
     }
 
     return *client;
 }
 
 String MqttHelper::getTopicPath(const String &suffix) {
-    return prefix + String(ESP_getChipId()) + "/" + suffix;
+    return prefix + "/" + String(ESP_getChipId()) + "/" + suffix;
 }
 
 void MqttHelper::publishMsg(String topic, String payload) {
@@ -94,20 +94,5 @@ void MqttHelper::publishMsg(String topic, String payload) {
         }
     } else {
         Serial.println("Cannot send message - MQTT client is not connected.");
-    }
-}
-
-//Can be use by HomeAssistant to automatically discover blinds
-void MqttHelper::sendHAAutoDiscovery() {
-    return; //@TODO: fix autodiscover
-    String haConfig;
-    uint32_t chipId = ESP_getChipId();
-
-    for (int i = 1; i <= 3; i++) {
-        haConfig = "{\"~\": \"/raw/esp8266/" + String(chipId) + "\", \"name\": \"Rollerblind " + String(i) +
-                   "\", \"cmd_t\": \"~/in" + String(i) + "\", \"set_pos_t\": \"~/in" + String(i) +
-                   "\", \"pos_t\": \"~/out" + String(i) +
-                   "\", \"payload_open\": 0, \"payload_close\": 100, \"pos_open\": 0, \"pos_clsd\": 100, \"val_tpl\": \"{{ value | int }}\", \"opt\": false }";
-        publishMsg("homeassistant/cover/" + String(chipId) + "/blind" + String(i) + "/config", haConfig);
     }
 }

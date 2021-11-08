@@ -23,9 +23,10 @@ class MqttHelper {
 private:
     unsigned long mqttLastConnectAttempt = 0;
     PubSubClient* client = nullptr;
-    String prefix = "ESP_Blinds/"; //root path for mqtt messages
 
 public:
+    typedef std::function<void(void)> TCallback;
+
     String mqttServer;           //WIFI config: MQTT server config (optional)
     int mqttPort = 1883;         //WIFI config: MQTT port config (optional)
     String mqttUser;             //WIFI config: MQTT server username (optional)
@@ -40,15 +41,18 @@ public:
 
     void setup(MQTT_CALLBACK_SIGNATURE);
 
+    TCallback onConnect;
+
     PubSubClient& getClient();
 
     String getTopicPath(const String& suffix);
 
     boolean reconnect();
 
-    void sendHAAutoDiscovery();
-
     void publishMsg(String topic, String payload);
+
+    String prefix = "ESP_Blinds";
+
 };
 
 #endif //ESP32_MOTORIZED_ROLLER_BLINDS_MQTTHELPER_H

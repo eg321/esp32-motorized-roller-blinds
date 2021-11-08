@@ -11,6 +11,8 @@ Do you really want this?
 
 #define WIFI_FAILURE_TIMEOUT 15 * 60 // How many seconds to wait for connection restoration before restart (affects captive portal too)
 
+#define HA_AUTODISCOVERY_PREFIX "homeassistant"
+
 #include <CheapStepper.h>
 //#include <ESP8266mDNS.h>
 //#include <WiFiUdp.h>
@@ -372,6 +374,45 @@ void checkWiFiConnection() {
     }
 }
 
+void sendHADiscovery() {
+    static boolean isHADiscoveryWasSent = false;
+    if (isHADiscoveryWasSent || !mqttHelper.isMqttEnabled || !mqttHelper.getClient().connected()) return;
+
+    Serial.println("Sending HA Autodiscovery packets...");
+
+    isHADiscoveryWasSent = true;
+    String haConfig;
+    uint32_t chipId = ESP_getChipId();
+
+    uint8_t num = 0;
+    for (StepperHelper stepperHelper : stepperHelpers) {
+        num++;
+        if (stepperHelper.isConnected()) {
+            haConfig = "{\"~\":\"" + mqttHelper.prefix + "/" + String(chipId) + "\","
+                "\"name\":\"Rollerblind " + String(num) + "\",\n"
+                "\"uniq_id\":\"" + String(chipId) + "_" + String(num) + "\","
+                "\"dev_cla\":\"blind\","
+                "\"cmd_t\":\"~/in\","
+                "\"set_pos_t\":\"~/in\","
+                "\"set_pos_tpl\":\"{\\\"num\\\": " + String(num) + ", \\\"action\\\": \\\"auto\\\", \\\"value\\\": {{ 100 - position }} }\",\n"
+                "\"pos_t\":\"~/out\",\n"
+                "\"pos_tpl\":\"{{ value_json.position" + String(num) + " }}\",\n"
+                "\"pl_open\":\"{\\\"num\\\": " + String(num) + ", \\\"action\\\": \\\"auto\\\", \\\"value\\\": 0}\",\n"
+                "\"pl_cls\":\"{\\\"num\\\": " + String(num) + ", \\\"action\\\": \\\"auto\\\", \\\"value\\\": 100}\",\n"
+                "\"pl_stop\":\"{\\\"num\\\": " + String(num) + ", \\\"action\\\": \\\"stop\\\", \\\"value\\\": 0}\",\n"
+                "\"pos_open\":0,\n"
+                "\"pos_clsd\":100,\n"
+                "\"opt\":false,"
+                "\"dev\":{\"ids\":\"" + String(chipId) + "\",\"name\":\"ESP Motorized RollerBlinds\",\"mf\":\"https://github.com/eg321/esp32-motorized-roller-blinds\",\"sw\":\"" + version + "\",\"cu\":\"http://" + WiFi.localIP().toString() + "\",\"mdl\":\"DIY\"} "
+            "}";
+        } else {
+            haConfig = ""; // empty payload will cause a previously discovered device to be deleted
+        }
+
+        mqttHelper.publishMsg(String(HA_AUTODISCOVERY_PREFIX) + "/cover/" + String(chipId) + "_" + String(num) + "/config", haConfig);
+    }
+}
+
 void setup(void) {
     Serial.begin(115200);
     delay(100);
@@ -427,6 +468,10 @@ void setup(void) {
     mqttHelper.mqttPort = WiFiSettings.integer("MQTT port", 0, 65535, 1883);
     mqttHelper.mqttUser = WiFiSettings.string("MQTT username", 40);
     mqttHelper.mqttPwd = WiFiSettings.string("MQTT password", 40);
+
+    mqttHelper.onConnect = []() {
+        sendHADiscovery();
+    };
 
     //reset settings - for testing
     //clean FS, for testing
