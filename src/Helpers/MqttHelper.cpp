@@ -91,11 +91,11 @@ String MqttHelper::getTopicPath(const String &suffix) {
     return prefix + "/" + String(ESP_getChipId()) + "/" + suffix;
 }
 
-void MqttHelper::publishMsg(String topic, String payload) {
+void MqttHelper::publishMsg(String topic, String payload, bool isRetained) {
     Serial.println("Trying to send msg to the '" + topic + "': " + payload);
     //Send status to MQTT bus if connected
     if (getClient().connected()) {
-        if (!getClient().publish(topic.c_str(), payload.c_str())) {
+        if (!getClient().publish(topic.c_str(), payload.c_str(), isRetained)) {
             Serial.println(F("Cannot send message to the MQTT server."));
         }
     } else {

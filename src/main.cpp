@@ -410,7 +410,11 @@ void sendHADiscovery() {
             haConfig = ""; // empty payload will cause a previously discovered device to be deleted
         }
 
-        mqttHelper.publishMsg(String(HA_AUTODISCOVERY_PREFIX) + "/cover/" + String(chipId) + "_" + String(num) + "/config", haConfig);
+        mqttHelper.publishMsg(
+            String(HA_AUTODISCOVERY_PREFIX) + "/cover/" + String(chipId) + "_" + String(num) + "/config",
+            haConfig,
+            true
+        );
     }
 }
 

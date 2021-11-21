@@ -51,7 +51,7 @@ public:
 
     boolean reconnect();
 
-    void publishMsg(String topic, String payload);
+    void publishMsg(String topic, String payload, bool isRetained = false);
 
     String prefix = "ESP_Blinds";
 
