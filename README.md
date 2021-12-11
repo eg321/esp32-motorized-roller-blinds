@@ -112,7 +112,6 @@ I have developed 2 models for converting Leroy Merlin' roller blinds into motori
 3 printing models are available at `3d_parts` directory or at [Thingiverse](https://www.thingiverse.com/thing:4093205/) directly with some instructions.
 
 # Future plans
-* Complete implementation for  Home Assistant "Auto Discovery"
 * Add support for other steppers and drivers (please propose at "issues")
 * Add more configuration options at WebUI to allow re-configuration without "wipe settings"
 * Prepare universal PCB
