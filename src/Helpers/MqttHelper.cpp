@@ -48,12 +48,12 @@ void MqttHelper::loop() {
     if (getClient().connected()) {
         getClient().loop();
 
-        if (abs(now - lastAvailableMsgTime) > AVAILABILITY_MSG_INTERVAL * 1000) {
+        if (fabs(now - lastAvailableMsgTime) > AVAILABILITY_MSG_INTERVAL * 1000) {
             sendAvailabilityMessage();
             lastAvailableMsgTime = now;
         }
     } else {
-        if (abs(now - mqttLastConnectAttempt) > MQTT_RECONNECT_DELAY) { //Attempt to reconnect once per 30 sec
+        if (fabs(now - mqttLastConnectAttempt) > MQTT_RECONNECT_DELAY) { //Attempt to reconnect once per 30 sec
             mqttLastConnectAttempt = now;
             if (reconnect()) {
                 mqttLastConnectAttempt = 0;
