@@ -56,16 +56,15 @@ Fill pins for needed Steppers divided by comma and check pins for your mechanica
 *Just do not setup MQTT details at Captive Portal, if you don't want to use MQTT.*
 
 MQTT details:
-- All controllers send a message to the common topic after successful connection: `ESP_Blinds/register` (in JSON with 2 fields: `chipId` and `ip`)
 - Controller listening for commands at topic `ESP_Blinds/<chip_id>/in` (JSON)
 - Controller send updates with state and positions to `ESP_Blinds/<chip_id>/out` (JSON)
 - Separate topics for steppers (`/outN`) are disabled for MQTT messaging optimization, but you can enable it if needed for your automation flow.
 
 ## HomeAssistant integration
-*Auto discovery is disabled now due testing issues. Will be enabled in future releases.*
+There is MQTT auto-discovery implemented for HomeAssistant with default MQTT prefix (requires HA v2021.11 at least). It assists you to create objects with correct configuration.
 
+In case it does not work for you, you can add blinds manually. See examples below. 
 <img src="https://user-images.githubusercontent.com/10514429/127761434-6b5441d2-5204-49c0-a82d-9eed0a084a33.png" width=60%>
-
 
 Config example for 2 roller blinds (replace "_chip_Id_" with Chip id of your controller, watch it at registration topic - `/ESP_Blinds/register`):
 ```yaml
