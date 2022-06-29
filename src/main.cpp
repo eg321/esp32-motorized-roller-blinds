@@ -1,5 +1,7 @@
 #define LONG_PRESS_MS 1000      // How much ms you should hold button to switch to "long press" mode (tune blinds position)
 #define MAX_STEPPERS_COUNT 4    // This limited by available pins usually
+#define SINGLE_BUTTON_CONTROL   // If you use only one button to move Up/Down
+
 /*
 Usually your home automation can extract needed data from single JSON with info about all steppers.
 These separate updates for specific steppers will additionally stuck all steppers for some milliseconds.
@@ -300,6 +302,7 @@ void restartDevice() {
 }
 
 void onPressHandler(Button2 &btn) {
+
     Serial.println("onPressHandler");
     boolean isRestartRequested = false;
 
@@ -309,6 +312,32 @@ void onPressHandler(Button2 &btn) {
         isRestartRequested = true;
     }
 
+#ifdef SINGLE_BUTTON_CONTROL
+
+#else
+    String newValue;
+    if (btn == buttonsHelper.buttonUp) {
+        Serial.println("Up button clicked");
+        newValue = "0";
+    } else if (btn == buttonsHelper.buttonDown) {
+        Serial.println("Down button clicked");
+        newValue = "100";
+    }
+
+    uint8_t num = 0;
+    for (StepperHelper &stepperHelper : stepperHelpers) {
+        num++;
+        if (stepperHelper.isConnected()) {
+            if (isRestartRequested || (stepperHelper.route == -1 && newValue == "0") || (stepperHelper.route == 1 && newValue == "100")) {
+                // Another click to the same direction will cause stopping
+                processCommand("stop", "", num, BUTTONS_CLIENT_ID);
+            } else {
+                processCommand("auto", newValue, num, BUTTONS_CLIENT_ID);
+            }
+        }
+    }
+
+#endif
 
     if (isRestartRequested) {
         restartDevice();
@@ -316,8 +345,12 @@ void onPressHandler(Button2 &btn) {
 }
 
 void onReleaseHandler(Button2 &btn) {
+
     Serial.print("onReleaseHandler. Button released after (ms): ");
     Serial.println(btn.wasPressedFor());
+
+#ifdef SINGLE_BUTTON_CONTROL
+
     String newValue; 
     uint8_t num = 0;
 
@@ -343,6 +376,19 @@ void onReleaseHandler(Button2 &btn) {
                 }
             }
     }
+#else
+
+    if (btn.wasPressedFor() > LONG_PRESS_MS) {
+        uint8_t num = 0;
+        for (StepperHelper &stepperHelper : stepperHelpers) {
+            num++;
+            if (stepperHelper.isConnected()) {
+                processCommand("stop", "", num, BUTTONS_CLIENT_ID);
+            }
+        }
+    }
+#endif
+
 }
 
 void checkWiFiConnection() {
