@@ -301,16 +301,7 @@ void restartDevice() {
 
 void onPressHandler(Button2 &btn) {
     Serial.println("onPressHandler");
-    String newValue;
     boolean isRestartRequested = false;
-
-    if (btn == buttonsHelper.buttonUp) {
-        Serial.println("Up button clicked");
-        newValue = "0";
-    } else if (btn == buttonsHelper.buttonDown) {
-        Serial.println("Down button clicked");
-        newValue = "100";
-    }
 
     if (btn.getNumberOfClicks() == NUMBER_OF_CLICKS_TO_RESTART) {
         Serial.print(btn.getNumberOfClicks());
@@ -318,18 +309,6 @@ void onPressHandler(Button2 &btn) {
         isRestartRequested = true;
     }
 
-    uint8_t num = 0;
-    for (StepperHelper &stepperHelper : stepperHelpers) {
-        num++;
-        if (stepperHelper.isConnected()) {
-            if (isRestartRequested || (stepperHelper.route == -1 && newValue == "0") || (stepperHelper.route == 1 && newValue == "100")) {
-                // Another click to the same direction will cause stopping
-                processCommand("stop", "", num, BUTTONS_CLIENT_ID);
-            } else {
-                processCommand("auto", newValue, num, BUTTONS_CLIENT_ID);
-            }
-        }
-    }
 
     if (isRestartRequested) {
         restartDevice();
@@ -339,14 +318,30 @@ void onPressHandler(Button2 &btn) {
 void onReleaseHandler(Button2 &btn) {
     Serial.print("onReleaseHandler. Button released after (ms): ");
     Serial.println(btn.wasPressedFor());
+    String newValue; 
+    uint8_t num = 0;
+
     if (btn.wasPressedFor() > LONG_PRESS_MS) {
-        uint8_t num = 0;
-        for (StepperHelper &stepperHelper : stepperHelpers) {
+        newValue = "100";
+        
+    } else {
+        newValue = "0";
+        
+    }
+    for (StepperHelper &stepperHelper : stepperHelpers) {
             num++;
             if (stepperHelper.isConnected()) {
-                processCommand("stop", "", num, BUTTONS_CLIENT_ID);
+                if (stepperHelper.route != 0) {
+                   // Another click to the same direction will cause stopping
+                   Serial.print("Stop moving");
+                   processCommand("stop", "", num, BUTTONS_CLIENT_ID);
+                   
+                } else {
+                    Serial.print("Start moving");
+                    processCommand("auto", newValue, num, BUTTONS_CLIENT_ID);
+                    
+                }
             }
-        }
     }
 }
 
