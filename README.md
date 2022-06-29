@@ -5,3 +5,5 @@ Short click - open
 Long press - close
 
 5 clicks - restart esp
+
+Only Button UP pin used. 
