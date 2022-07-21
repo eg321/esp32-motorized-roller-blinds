@@ -1,6 +1,7 @@
 #define LONG_PRESS_MS 1000      // How much ms you should hold button to switch to "long press" mode (tune blinds position)
 #define MAX_STEPPERS_COUNT 4    // This limited by available pins usually
-#define SINGLE_BUTTON_CONTROL   // If you use only one button to move Up/Down
+//#define SINGLE_BUTTON_CONTROL  // If you use only one button to move Up/Down
+//#define LUX_SENSOR             // Use BH1750 light sensor on GPIO05
 
 /*
 Usually your home automation can extract needed data from single JSON with info about all steppers.
@@ -30,6 +31,11 @@ Do you really want this?
 #include "index_html.h"
 #include <string>
 
+#ifdef LUX_SENSOR 
+#include <BH1750.h>
+#include <Wire.h>
+#endif
+
 //----------------------------------------------------
 
 // Version number for checking if there are new code releases and notifying the user
@@ -41,9 +47,15 @@ ButtonsHelper buttonsHelper = ButtonsHelper();
 StepperHelper stepperHelpers[MAX_STEPPERS_COUNT];
 
 String deviceHostname;             //WIFI config: Bonjour name of device
+
 int steppersRPM;                   //WIFI config
 int state = 0;
 long lastPublish = 0;
+#ifdef LUX_SENSOR 
+long light_tmr;
+uint16_t lastlux;
+BH1750 lightSensor(0x23);
+#endif
 
 boolean loadDataSuccess = false;
 boolean saveItNow = false;          //If true will store positions to filesystem
@@ -301,6 +313,7 @@ void restartDevice() {
 #endif
 }
 
+#ifdef SINGLE_BUTTON_CONTROL
 void onPressHandler(Button2 &btn) {
 
     Serial.println("onPressHandler");
@@ -312,33 +325,6 @@ void onPressHandler(Button2 &btn) {
         isRestartRequested = true;
     }
 
-#ifdef SINGLE_BUTTON_CONTROL
-
-#else
-    String newValue;
-    if (btn == buttonsHelper.buttonUp) {
-        Serial.println("Up button clicked");
-        newValue = "0";
-    } else if (btn == buttonsHelper.buttonDown) {
-        Serial.println("Down button clicked");
-        newValue = "100";
-    }
-
-    uint8_t num = 0;
-    for (StepperHelper &stepperHelper : stepperHelpers) {
-        num++;
-        if (stepperHelper.isConnected()) {
-            if (isRestartRequested || (stepperHelper.route == -1 && newValue == "0") || (stepperHelper.route == 1 && newValue == "100")) {
-                // Another click to the same direction will cause stopping
-                processCommand("stop", "", num, BUTTONS_CLIENT_ID);
-            } else {
-                processCommand("auto", newValue, num, BUTTONS_CLIENT_ID);
-            }
-        }
-    }
-
-#endif
-
     if (isRestartRequested) {
         restartDevice();
     }
@@ -348,8 +334,6 @@ void onReleaseHandler(Button2 &btn) {
 
     Serial.print("onReleaseHandler. Button released after (ms): ");
     Serial.println(btn.wasPressedFor());
-
-#ifdef SINGLE_BUTTON_CONTROL
 
     String newValue; 
     uint8_t num = 0;
@@ -376,8 +360,49 @@ void onReleaseHandler(Button2 &btn) {
                 }
             }
     }
-#else
+}
 
+#else
+void onPressHandler(Button2 &btn) {
+    Serial.println("onPressHandler");
+    String newValue;
+    boolean isRestartRequested = false;
+
+    if (btn == buttonsHelper.buttonUp) {
+        Serial.println("Up button clicked");
+        newValue = "0";
+    } else if (btn == buttonsHelper.buttonDown) {
+        Serial.println("Down button clicked");
+        newValue = "100";
+    }
+
+    if (btn.getNumberOfClicks() == NUMBER_OF_CLICKS_TO_RESTART) {
+        Serial.print(btn.getNumberOfClicks());
+        Serial.println(" times clicked.");
+        isRestartRequested = true;
+    }
+
+    uint8_t num = 0;
+    for (StepperHelper &stepperHelper : stepperHelpers) {
+        num++;
+        if (stepperHelper.isConnected()) {
+            if (isRestartRequested || (stepperHelper.route == -1 && newValue == "0") || (stepperHelper.route == 1 && newValue == "100")) {
+                // Another click to the same direction will cause stopping
+                processCommand("stop", "", num, BUTTONS_CLIENT_ID);
+            } else {
+                processCommand("auto", newValue, num, BUTTONS_CLIENT_ID);
+            }
+        }
+    }
+
+    if (isRestartRequested) {
+        restartDevice();
+    }
+}
+
+void onReleaseHandler(Button2 &btn) {
+    Serial.print("onReleaseHandler. Button released after (ms): ");
+    Serial.println(btn.wasPressedFor());
     if (btn.wasPressedFor() > LONG_PRESS_MS) {
         uint8_t num = 0;
         for (StepperHelper &stepperHelper : stepperHelpers) {
@@ -387,9 +412,9 @@ void onReleaseHandler(Button2 &btn) {
             }
         }
     }
-#endif
-
 }
+
+#endif
 
 void checkWiFiConnection() {
     static unsigned long lastCheckTime = 0;
@@ -461,6 +486,10 @@ void sendHADiscovery() {
 
 void setup(void) {
     Serial.begin(115200);
+    #ifdef LUX_SENSOR 
+    Wire.begin(5, 0);
+    lightSensor.begin(BH1750::CONTINUOUS_HIGH_RES_MODE);
+    #endif
     delay(100);
 
     Serial.println("Starting now...");
@@ -710,4 +739,19 @@ void loop(void) {
         initLoop = false;
         stopPowerToCoils();
     }
+
+  #ifdef LUX_SENSOR
+    if (millis() - light_tmr > 300000) {
+
+    uint16_t lux = lightSensor.readLightLevel();
+    if (lux != lastlux) {
+        lastlux = lux;
+            if (mqttHelper.isMqttEnabled && mqttHelper.getClient().connected()) {
+            mqttHelper.publishMsg(mqttHelper.outputTopic + "/lux", String(lux));
+            Serial.println("lux = "+ lux);
+        }
+    }
+    light_tmr = millis();
+  }
+  #endif
 }
