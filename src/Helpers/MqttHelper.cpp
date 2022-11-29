@@ -1,4 +1,11 @@
 #include "MqttHelper.h"
+uint32_t MqttHelper::getChipID(){
+    uint32_t chipId = 0;
+    for(int i=0; i<17; i=i+8) {
+	    chipId |= ((ESP.getEfuseMac() >> (40 - i)) & 0xff) << i;
+	}
+    return chipId;
+}
 
 boolean MqttHelper::reconnect() {
     boolean isLoginNeeded = false;
@@ -7,7 +14,7 @@ boolean MqttHelper::reconnect() {
         isLoginNeeded = true;
     }
     if (!getClient().connected()) {
-        String clientId = "ESP-Blinds-" + String(ESP_getChipId());
+        String clientId = "ESP-Blinds-" + String(getChipID());
         Serial.printf("MQTT connecting (login: '%s', pass: '%s')...\r\n", mqttUser.c_str(), mqttPwd.c_str());
         // Attempt to connect
         if ((isLoginNeeded ? getClient().connect(clientId.c_str(), mqttUser.c_str(), mqttPwd.c_str())
@@ -36,7 +43,7 @@ boolean MqttHelper::reconnect() {
 }
 
 void MqttHelper::sendAvailabilityMessage() {
-    publishMsg(prefix + "/" + String(ESP_getChipId()) + "/available", "online");
+    publishMsg(prefix + "/" + String(getChipID()) + "/available", "online");
 }
 
 void MqttHelper::loop() {
@@ -88,7 +95,7 @@ PubSubClient &MqttHelper::getClient() {
 }
 
 String MqttHelper::getTopicPath(const String &suffix) {
-    return prefix + "/" + String(ESP_getChipId()) + "/" + suffix;
+    return prefix + "/" + String(getChipID()) + "/" + suffix;
 }
 
 void MqttHelper::publishMsg(String topic, String payload, bool isRetained) {
