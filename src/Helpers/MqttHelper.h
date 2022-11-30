@@ -25,6 +25,7 @@ private:
     unsigned long mqttLastConnectAttempt = 0;
     PubSubClient* client = nullptr;
     unsigned long lastAvailableMsgTime = 0;
+    uint32_t getChipID();
 
 public:
     typedef std::function<void(void)> TCallback;
