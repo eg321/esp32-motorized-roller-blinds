@@ -55,6 +55,14 @@ ESP8266WebServer server(80);              // TCP server at port 80 will respond 
 
 WebSocketsServer webSocket = WebSocketsServer(81);  // WebSockets will respond on port 81
 
+uint32_t getChipID(){
+    uint32_t chipId = 0;
+    for(int i=0; i<17; i=i+8) {
+	    chipId |= ((ESP.getEfuseMac() >> (40 - i)) & 0xff) << i;
+	}
+    return chipId;
+}
+
 bool loadConfig() {
     if (!helper.loadconfig()) {
         return false;
@@ -382,7 +390,7 @@ void sendHADiscovery() {
 
     isHADiscoveryWasSent = true;
     String haConfig;
-    uint32_t chipId = ESP_getChipId();
+    uint32_t chipId = getChipID();
 
     uint8_t num = 0;
     for (StepperHelper stepperHelper : stepperHelpers) {
